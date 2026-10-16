@@ -10,6 +10,7 @@ using namespace debirth;
 namespace
 {
     constexpr int transportHeight = 64;
+    constexpr int effectsHeight = 92;
     const char* const fileSuffix = ".mzdebirth";
 }
 
@@ -47,7 +48,7 @@ TransportBar::TransportBar(DebirthProcessor& p)
     addAndMakeVisible(shuffle);
     addAndMakeVisible(master);
 
-    fresh.setTooltip("Start again: every pattern cleared, every knob back where it was.");
+    fresh.setTooltip("Start again: the factory grooves in every bank, or an empty rack.");
     open.setTooltip("Load a rack saved before.");
     save.setTooltip("Save the rack - every pattern, knob and fader - to a file.");
     fresh.onPress = [this] { if (onNew) onNew(); };
@@ -293,25 +294,29 @@ void RackView::paint(juce::Graphics& g)
 //============================================================================== MainPanel
 
 MainPanel::MainPanel(DebirthProcessor& p)
-    : processor(p), transport(p), rack(p)
+    : processor(p), transport(p), effects(p.rack), rack(p)
 {
     setLookAndFeel(&look);
     setWantsKeyboardFocus(true);
 
     transport.onNew = [this]
     {
-        juce::AlertWindow::showOkCancelBox(juce::MessageBoxIconType::QuestionIcon, "Start again?",
-            "Every pattern will be cleared and every knob put back.", "Start again", "Cancel", this,
-            juce::ModalCallbackFunction::create([this] (int ok)
+        // 1 the factory grooves, 2 an empty rack, 0 neither
+        juce::AlertWindow::showYesNoCancelBox(juce::MessageBoxIconType::QuestionIcon, "Start again?",
+            "Every pattern and knob will be replaced - with the factory grooves (four banks: acid, "
+            "techno, electro and deep house), or with an empty rack to write your own.",
+            "Factory grooves", "Empty rack", "Cancel", this,
+            juce::ModalCallbackFunction::create([this] (int choice)
             {
-                if (ok == 0) return;
+                if (choice == 0) return;
                 processor.rack.playing = false;
-                processor.startAfresh();
+                processor.startAfresh(choice == 1);
             }));
     };
     transport.onLoad = [this] { loadFile(); };
     transport.onSave = [this] { saveFile(); };
     addAndMakeVisible(transport);
+    addAndMakeVisible(effects);
 
     viewport.setViewedComponent(&rack, false);
     viewport.setScrollBarsShown(true, false);
@@ -338,12 +343,14 @@ void MainPanel::timerCallback()
 
     const bool blinkPhase = (++ticks / 8) % 2 == 0;
     transport.tick();
+    effects.tick();
     rack.tick(blinkPhase);
 }
 
 void MainPanel::refresh()
 {
     transport.refresh();
+    effects.refresh();
     rack.refresh();
 }
 
@@ -407,6 +414,8 @@ void MainPanel::resized()
     auto r = getLocalBounds().withTrimmedLeft(cheek).withTrimmedRight(cheek);
     r.removeFromTop(gap);
     transport.setBounds(r.removeFromTop(transportHeight));
+    r.removeFromTop(gap);
+    effects.setBounds(r.removeFromTop(effectsHeight));
 
     viewport.setBounds(r);
     rack.setSize(r.getWidth() - viewport.getScrollBarThickness() - 4, rack.preferredHeight());

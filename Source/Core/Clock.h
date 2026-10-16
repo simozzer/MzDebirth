@@ -35,6 +35,7 @@ public:
 
     double samplesPerStep() const   { return rate * 15.0 / tempo; }
     double getTempo() const         { return tempo; }
+    double getRate() const          { return rate; }
 
     // where the next block starts, in quarter notes from PLAY - for the synced LFOs
     double quarters() const         { return phase / 4.0; }

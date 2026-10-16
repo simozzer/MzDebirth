@@ -31,7 +31,15 @@ And for all of them:
   while playing waits for the one playing to come round, and blinks until it does.
 - **Transport** - tempo, a shuffle that each machine can follow or not, and a master level.
   The space bar plays and stops.
-- **Mixer** - level, pan and mute for each machine.
+- **Mixer** - level, pan and mute for each machine, its switches into the DIST, PCF and
+  COMP, and its send to the DELAY.
+- **Effects** - ReBirth's four units, along under the transport. **DIST**: drive and a shape
+  from soft to hard to a lopsided fuzz. **PCF**: a filter played by one of 32 step patterns,
+  struck on every sixteenth and closing again by DEC, low-pass or band-pass. **DELAY**: echoes
+  1 to 16 sixteenths behind at the rack's tempo (or triplets), with feedback and pan; they
+  ring on after STOP. **COMP**: ratio and threshold, for the channels switched into it, and
+  for the whole mix with MASTER. A channel goes through DIST, then PCF, then COMP, then its
+  fader; each channel has its own of each, sharing the unit's knobs.
 - **Files** - the whole rack, patterns and all, saved to and loaded from `.mzdebirth` files.
   The sampler's disk is saved by where it is, not copied in. The standalone app also
   remembers where it was left.

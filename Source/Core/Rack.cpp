@@ -175,6 +175,22 @@ void Rack::prepare(double sampleRate, int maxBlock)
     mz808.stop();
     mz909.stop();
     mz950.stop();
+
+    for (auto& in : inserts)
+    {
+        in.dist[0].prepare(sampleRate);
+        in.dist[1].prepare(sampleRate);
+        in.pcf.prepare(sampleRate);
+        in.comp.prepare(sampleRate);
+    }
+    envelope.assign((size_t) blockSize, 0.0f);
+    sends.assign((size_t) blockSize, 0.0f);
+    pcfEnv = 0;
+    pcfPosition = -1;
+
+    // sixteen steps at the slowest tempo, and some over
+    delay.prepare(sampleRate, 16.0 * 15.0 / Clock::minTempo + 0.5);
+    masterComp.prepare(sampleRate);
 }
 
 void Rack::render(float* left, float* right, int n)
@@ -234,9 +250,11 @@ void Rack::renderBlock(float* left, float* right, int n)
     for (int m = 0; m < channels; ++m)
         lane[m] = track(m).shuffle.load() ? 1 : 0;
 
-    // Render up to each event, then act on it, so every step lands on its sample.
+    // Render up to each event, then act on it, so every step lands on its sample. The PCF
+    // is struck on every straight sixteenth while playing, at its pattern's level for the step.
+    strikeCount = 0;
     int pos = 0;
-    clock.advance(n, [&] (int at, int l, Clock::Event e, int64_t)
+    clock.advance(n, [&] (int at, int l, Clock::Event e, int64_t step)
     {
         renderMachines(pos, at);
         pos = at > pos ? at : pos;
@@ -247,41 +265,78 @@ void Rack::renderBlock(float* left, float* right, int n)
         if (l == lane[M808] && isStep) mz808.step();
         if (l == lane[M909] && isStep) mz909.step();
         if (l == lane[M950]) { if (isStep) mz950.step(); else mz950.gateOff(); }
+
+        if (l == 0 && isStep && strikeCount < (int) (sizeof strikes / sizeof strikes[0]))
+        {
+            const int s = (int) (step % 16);
+            strikes[strikeCount++] = { at, pcfLevel((int) fx.get(fx.indexOf("pcfPattern")), s) };
+            pcfPosition = s;
+        }
     });
     renderMachines(pos, n);
+    if (! running) pcfPosition = -1;
 
-    // The mixer. Each gain ramps across the block from where it was, so moving a fader
-    // does not click.
-    const float masterTo = master.load() * master.load();
+    // The effects units' knobs, once a block.
+    const EffectSettings settings = fx.read();
+    renderPcfEnvelope(n);
+
+    // The mixer. Each channel through its inserts, then its fader and pan, and its send to
+    // the delay after the fader. Each gain ramps across the block from where it was, so
+    // moving a fader does not click.
     const float inv = 1.0f / (float) n;
+    float* send = sends.data();
 
-    for (int i = 0; i < n; ++i) left[i] = right[i] = 0.0f;
+    for (int i = 0; i < n; ++i) left[i] = right[i] = send[i] = 0.0f;
 
     for (int c = 0; c < channels; ++c)
     {
         const Channel& ch = channel[c];
+        float* srcL = buffers[c].data();
+        float* srcR = c == M950 ? sampleRight.data() : nullptr;
+
+        Inserts& in = inserts[c];
+        if (ch.dist.load())
+        {
+            in.dist[0].process(srcL, n, settings.distAmount, settings.distShape);
+            if (srcR != nullptr) in.dist[1].process(srcR, n, settings.distAmount, settings.distShape);
+        }
+        if (ch.pcf.load())  in.pcf.process(srcL, srcR, envelope.data(), n, settings);
+        else                in.pcf.reset();   // switched back in, it starts from rest
+        if (ch.comp.load()) in.comp.process(srcL, srcR, n, settings.compThreshold, settings.compRatio);
+
         const float level = ch.mute.load() ? 0.0f : ch.level.load() * ch.level.load();
         const float angle = (ch.pan.load() + 1.0f) * 0.25f * 3.14159265f;
         const float toL = level * std::cos(angle) * 1.41421356f;
         const float toR = level * std::sin(angle) * 1.41421356f;
+        const float toSend = level * ch.delay.load();
 
-        const float* srcL = buffers[c].data();
-        const float* srcR = c == M950 ? sampleRight.data() : srcL;
-        const float dl = (toL - gainL[c]) * inv, dr = (toR - gainR[c]) * inv;
-        float gl = gainL[c], gr = gainR[c];
+        if (srcR == nullptr) srcR = srcL;
+        const float dl = (toL - gainL[c]) * inv, dr = (toR - gainR[c]) * inv, ds = (toSend - sendGain[c]) * inv;
+        float gl = gainL[c], gr = gainR[c], gs = sendGain[c];
 
         for (int i = 0; i < n; ++i)
         {
             gl += dl;
             gr += dr;
+            gs += ds;
             left[i] += srcL[i] * gl;
             right[i] += srcR[i] * gr;
+            send[i] += 0.5f * (srcL[i] + srcR[i]) * gs;
         }
 
         gainL[c] = toL;
         gainR[c] = toR;
+        sendGain[c] = toSend;
     }
 
+    // The delay comes back into the mix, the whole of which can go through the COMP too.
+    const double stepLength = clock.samplesPerStep() * (settings.delayTriplet != 0 ? 2.0 / 3.0 : 1.0);
+    delay.process(send, left, right, n, stepLength * settings.delaySteps, settings.delayFeedback, settings.delayPan);
+
+    if (settings.compMaster != 0)
+        masterComp.process(left, right, n, settings.compThreshold, settings.compRatio);
+
+    const float masterTo = master.load() * master.load();
     const float dm = (masterTo - masterGain) * inv;
     float gm = masterGain;
     for (int i = 0; i < n; ++i)
@@ -291,6 +346,27 @@ void Rack::renderBlock(float* left, float* right, int n)
         right[i] *= gm;
     }
     masterGain = masterTo;
+}
+
+//
+// The PCF's envelope across the block: struck to a step's level where each step begins,
+// falling away by DECAY in between.
+//
+void Rack::renderPcfEnvelope(int n)
+{
+    const float decay = fx.get(fx.indexOf("pcfDecay"));
+    const float seconds = 0.015f * std::pow(100.0f, decay);   // 15 ms to 1.5 s
+    const float coef = std::exp(-1.0f / (seconds * (float) clock.getRate()));
+
+    float* e = envelope.data();
+    int next = 0;
+    for (int i = 0; i < n; ++i)
+    {
+        while (next < strikeCount && strikes[next].at <= i)
+            pcfEnv = strikes[next++].level;
+        e[i] = pcfEnv;
+        pcfEnv *= coef;
+    }
 }
 
 } // namespace debirth

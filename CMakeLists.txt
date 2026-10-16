@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(MzDebirth VERSION 0.2.0 LANGUAGES C CXX)
+project(MzDebirth VERSION 0.3.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -57,6 +57,8 @@ add_subdirectory("${JUCE_PATH}" JUCE)
 set(MZ950_ENGINE "${MZ950_PATH}/Plugin/Source/S950")
 
 set(CORE_SOURCES
+    Source/Core/Effects.cpp
+    Source/Core/Grooves.cpp
     Source/Core/Rack.cpp
     Source/Core/Sampler.cpp
     "${MZ101_PATH}/Source/SH101/Engine.cpp"
@@ -110,6 +112,7 @@ target_sources(MzDebirth PRIVATE
     Source/UI/Widgets.cpp
     Source/UI/MonoRack.cpp
     Source/UI/DrumRack.cpp
+    Source/UI/EffectsBar.cpp
     Source/UI/SamplerRack.cpp
     Source/UI/MainPanel.cpp
     ${CORE_SOURCES})

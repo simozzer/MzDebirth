@@ -170,7 +170,8 @@ public:
 private:
     debirth::Channel& channel;
     juce::String name;
-    Knob pan;
+    Knob pan, delay;
+    Pad dist { "DIST" }, pcf { "PCF" }, comp { "COMP" };
     juce::Slider fader;
     Pad mute { "MUTE" };
 };

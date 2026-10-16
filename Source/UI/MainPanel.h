@@ -4,6 +4,7 @@
 #pragma once
 
 #include "DrumRack.h"
+#include "EffectsBar.h"
 #include "MonoRack.h"
 #include "SamplerRack.h"
 #include "Processor.h"
@@ -87,6 +88,7 @@ private:
     Look look;
 
     TransportBar transport;
+    EffectsBar effects;
     RackView rack;
     juce::Viewport viewport;
 

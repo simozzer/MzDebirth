@@ -43,7 +43,7 @@ public:
     // the whole rack, as saved in a file
     juce::ValueTree save() const;
     void load(const juce::ValueTree&);
-    void startAfresh();
+    void startAfresh(bool factoryGrooves);   // every pattern cleared - or filled with the factory grooves
 
     // bumped by every load, so the panel knows to read itself back
     int loadCount() const { return loads.load(); }
@@ -52,6 +52,7 @@ public:
 
 private:
     void timerCallback() override;   // the sampler's patch, handed over and collected
+    void writeFactoryGrooves();
 
     std::atomic<int> loads { 0 };
     std::vector<float> spare;   // a right channel to render into, when there is only a left

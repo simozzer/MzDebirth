@@ -206,7 +206,7 @@ void LedNumber::paint(juce::Graphics& g)
 
     const auto font = fonts::digits(r.getHeight() * 0.78f);
     g.setFont(font);
-    g.setColour(colours::ledOff);
+    g.setColour(colours::ledOff.withAlpha(0.4f));   // the unlit segments, there but not read
     g.drawText(juce::String::repeatedString("8", digits), r.reduced(4.0f, 0.0f), juce::Justification::centredRight);
     g.setColour(colours::ledRed);
     g.drawText(juce::String(get()), r.reduced(4.0f, 0.0f), juce::Justification::centredRight);
@@ -336,7 +336,8 @@ void PatternPanel::paint(juce::Graphics& g)
 
 MixerStrip::MixerStrip(debirth::Channel& c, const juce::String& n)
     : channel(c), name(n),
-      pan("PAN", -1.0f, 1.0f, 0.0f, [&c] { return c.pan.load(); }, [&c] (float v) { c.pan = v; })
+      pan("PAN", -1.0f, 1.0f, 0.0f, [&c] { return c.pan.load(); }, [&c] (float v) { c.pan = v; }),
+      delay("DELAY", 0.0f, 1.0f, 0.0f, [&c] { return c.delay.load(); }, [&c] (float v) { c.delay = v; })
 {
     pan.setColours(juce::Colour(0xff1a1d22), colours::light, colours::light);
     pan.setValueText([] (double v)
@@ -345,6 +346,25 @@ MixerStrip::MixerStrip(debirth::Channel& c, const juce::String& n)
         return p == 0 ? juce::String("C") : (p < 0 ? "L" + juce::String(-p) : "R" + juce::String(p));
     });
     addAndMakeVisible(pan);
+
+    delay.setColours(juce::Colour(0xff1a1d22), colours::stepOrange, colours::light);
+    delay.setValueText([] (double v) { return juce::String(juce::roundToInt(v * 100.0)) + "%"; });
+    delay.setTooltip("How much of this channel goes to the DELAY, after its fader.");
+    addAndMakeVisible(delay);
+
+    // the inserts, in the order the sound goes through them
+    struct Insert { Pad& pad; std::atomic<bool>& on; const char* tip; };
+    for (auto& in : { Insert { dist, channel.dist, "Through the DIST unit." },
+                      Insert { pcf,  channel.pcf,  "Through the PCF: the filter the PCF pattern plays." },
+                      Insert { comp, channel.comp, "Through the COMP unit." } })
+    {
+        auto* on = &in.on;
+        auto* pad = &in.pad;
+        pad->setTooltip(in.tip);
+        pad->setLedColour(colours::ledGreen);
+        pad->onPress = [on, pad] { *on = ! on->load(); pad->setLit(on->load()); };
+        addAndMakeVisible(*pad);
+    }
 
     fader.setSliderStyle(juce::Slider::LinearVertical);
     fader.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
@@ -371,16 +391,31 @@ MixerStrip::MixerStrip(debirth::Channel& c, const juce::String& n)
 void MixerStrip::refresh()
 {
     pan.refresh();
+    delay.refresh();
     fader.setValue(channel.level.load(), juce::dontSendNotification);
     mute.setLit(channel.mute.load());
+    dist.setLit(channel.dist.load());
+    pcf.setLit(channel.pcf.load());
+    comp.setLit(channel.comp.load());
 }
 
 void MixerStrip::resized()
 {
     auto r = getLocalBounds().reduced(6);
     r.removeFromTop(18);
-    pan.setBounds(r.removeFromTop(52).withSizeKeepingCentre(44, 52));
-    mute.setBounds(r.removeFromBottom(26));
+
+    auto knobs = r.removeFromTop(46);
+    pan.setBounds(knobs.removeFromLeft(knobs.getWidth() / 2));
+    delay.setBounds(knobs);
+
+    r.removeFromTop(4);
+    for (auto* p : { &dist, &pcf, &comp })
+    {
+        p->setBounds(r.removeFromTop(18));
+        r.removeFromTop(2);
+    }
+
+    mute.setBounds(r.removeFromBottom(24));
     r.removeFromBottom(4);
     fader.setBounds(r.withSizeKeepingCentre(36, r.getHeight()));
 }

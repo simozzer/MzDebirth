@@ -2,6 +2,7 @@
 // Free software under the GNU AGPL v3; see LICENSE.
 
 #include "Processor.h"
+#include "Core/Grooves.h"
 #include "UI/MainPanel.h"
 
 using namespace debirth;
@@ -10,106 +11,6 @@ using namespace debirth;
 
 namespace
 {
-    void bassLine(Track<BassPattern>& track, const char* const notes[stepsPerPattern])
-    {
-        // each step: a note name and octave mark ("C", "C+", "A#-"), "." a rest; then
-        // ">" for an accent and "~" for a slide
-        static const char* const names[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
-        auto& p = track.patterns[0];
-
-        for (int i = 0; i < stepsPerPattern; ++i)
-        {
-            juce::String s(notes[i]);
-            BassStep st;
-            st.accent = s.containsChar('>');
-            st.slide = s.containsChar('~');
-            s = s.removeCharacters(">~");
-            st.gate = s != ".";
-            st.octave = s.containsChar('+') ? 1 : (s.endsWithChar('-') ? -1 : 0);
-            s = s.removeCharacters("+").trimCharactersAtEnd("-");
-            for (int n = 0; n < 12; ++n)
-                if (s == names[n]) st.note = n;
-            if (s == "C'") st.note = 12;
-            p.set(i, st);
-        }
-    }
-
-    void drumRow(DrumPattern& p, int voice, const char* hits)
-    {
-        for (int i = 0; i < stepsPerPattern; ++i)
-            p.set(voice, i, hits[i] == 'x');
-    }
-
-    template <class K>
-    void knob(K& knobs, const char* id, float v) { knobs.set(knobs.indexOf(id), v); }
-
-    //
-    // Something to play the first time it is opened: a part for every machine, in A1.
-    // A saved state, or NEW, replaces it.
-    //
-    void writeDemo(Rack& rack)
-    {
-        static const char* const acid[] = { "C>", "C", "C'~", "C", ".", "D#>", "C~", "A#-",
-                                            "C>", "C+", ".", "G~", "F", "D#>~", "C", "C+" };
-        bassLine(rack.mz303.track, acid);
-        knob(rack.mz303.knobs, "cutoff", 3.0f);
-        knob(rack.mz303.knobs, "res", 7.5f);
-        knob(rack.mz303.knobs, "envMod", 6.5f);
-        knob(rack.mz303.knobs, "decay", 4.0f);
-
-        static const char* const lead[] = { ".", ".", "G", ".", ".", ".", "A#~", "C'",
-                                            ".", ".", "G", ".", "F~", "G", ".", "." };
-        bassLine(rack.mz101.track, lead);
-        knob(rack.mz101.knobs, "saw", 6.0f);
-        knob(rack.mz101.knobs, "pulse", 5.0f);
-        knob(rack.mz101.knobs, "cutoff", 5.5f);
-        knob(rack.mz101.knobs, "res", 4.0f);
-        knob(rack.mz101.knobs, "portaMode", 1.0f);   // AUTO: the slides glide
-        knob(rack.mz101.knobs, "portaTime", 2.5f);
-        knob(rack.mz101.knobs, "release", 3.5f);
-        rack.channel[Rack::M101].level = 0.55f;
-        rack.channel[Rack::M101].pan = 0.3f;
-
-        auto& d8 = rack.mz808.track.patterns[0];
-        drumRow(d8, tr808::Voice::BD, "x...x...x...x..x");
-        drumRow(d8, tr808::Voice::CP, "....x.......x...");
-        drumRow(d8, tr808::Voice::CH, "x.x.x.x.x.x.x.x.");
-        drumRow(d8, DrumPattern::accentRow, "x...x...x...x...");
-
-        auto& d9 = rack.mz909.track.patterns[0];
-        drumRow(d9, tr909::Voice::OH, "..x...x...x...x.");
-        drumRow(d9, tr909::Voice::RC, "x.x.x.x.x.x.x.x.");
-        drumRow(d9, tr909::Voice::RS, "......x......x..");
-        rack.channel[Rack::M909].level = 0.55f;
-        rack.channel[Rack::M909].pan = -0.25f;
-
-        rack.tempo = 128.0f;
-        rack.shuffle = 0.15f;
-    }
-
-    //
-    // A few hits on the sampler, once it has a programme: a pedal hat and a rim shot, off the
-    // beat, if the kit has them by those names - and its second and third keys if not.
-    //
-    void writeSamplerDemo(Mz950& s)
-    {
-        const auto spans = s.keySpans();
-        if (spans.size() < 3) return;
-
-        auto key = [&spans] (const char* name, int fallback)
-        {
-            for (const auto& sp : spans)
-                if (juce::String(sp.sample).containsIgnoreCase(name)) return sp.low;
-            return spans[(size_t) fallback].low;
-        };
-
-        auto& p = s.track.patterns[0];
-        const int hat = key("PEDAL", 1), rim = key("RIM", 2);
-        for (int step : { 3, 7, 11, 15 }) p.set(hat, step, true);
-        p.set(rim, 10, true);
-        p.set(rim, 13, true);
-    }
-
     //
     // The drum disk that comes with Mz950: in the disks folder beside the app, where the
     // installer puts it, or failing that where the app was built from.
@@ -132,14 +33,31 @@ namespace
 DebirthProcessor::DebirthProcessor()
     : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true))
 {
-    writeDemo(rack);
-
-    std::string error;
-    if (const auto disk = defaultDisk(); disk.existsAsFile()
-        && rack.mz950.loadDisk(disk.getFullPathName().toStdString(), error))
-        writeSamplerDemo(rack.mz950);
-
+    // Something to play the first time it is opened. A saved state replaces it.
+    startAfresh(true);
     startTimerHz(20);
+}
+
+//
+// The factory grooves, in every bank of every machine - the 950's on the drum disk that
+// comes with it, which is loaded for them if it is not in already.
+//
+void DebirthProcessor::writeFactoryGrooves()
+{
+    // SeqCheck reads every one of them, so a problem here is a groove typed wrongly since
+    const auto problems = writeGrooves(rack);
+    jassert(problems.empty());
+    juce::ignoreUnused(problems);
+
+    const auto disk = defaultDisk();
+    std::string error;
+    if (disk.existsAsFile()
+        && (rack.mz950.diskPath() == disk.getFullPathName().toStdString()
+            || rack.mz950.loadDisk(disk.getFullPathName().toStdString(), error)))
+    {
+        rack.mz950.selectProgram(0);
+        writeSamplerGrooves(rack.mz950);   // a kit without those sample names just goes without
+    }
 }
 
 void DebirthProcessor::timerCallback()
@@ -314,6 +232,10 @@ juce::ValueTree DebirthProcessor::save() const
     sampler.setProperty("program", rack.mz950.program(), nullptr);
     root.appendChild(sampler, nullptr);
 
+    juce::ValueTree effects("Effects");
+    saveKnobs(effects, rack.fx);
+    root.appendChild(effects, nullptr);
+
     juce::ValueTree mixer("Mixer");
     for (int c = 0; c < Rack::channels; ++c)
     {
@@ -322,6 +244,10 @@ juce::ValueTree DebirthProcessor::save() const
         ch.setProperty("level", rack.channel[c].level.load(), nullptr);
         ch.setProperty("pan", rack.channel[c].pan.load(), nullptr);
         ch.setProperty("mute", rack.channel[c].mute.load(), nullptr);
+        ch.setProperty("dist", rack.channel[c].dist.load(), nullptr);
+        ch.setProperty("pcf", rack.channel[c].pcf.load(), nullptr);
+        ch.setProperty("comp", rack.channel[c].comp.load(), nullptr);
+        ch.setProperty("delay", rack.channel[c].delay.load(), nullptr);
         mixer.appendChild(ch, nullptr);
     }
     root.appendChild(mixer, nullptr);
@@ -334,7 +260,7 @@ void DebirthProcessor::load(const juce::ValueTree& root)
     if (! root.hasType("MzDebirth")) return;
     if ((int) root.getProperty("version", 0) < 2) return;   // 0.1's racks: two machines, and gone
 
-    startAfresh();
+    startAfresh(false);
 
     rack.tempo = (float) root.getProperty("tempo", 120.0f);
     rack.shuffle = (float) root.getProperty("shuffle", 0.0f);
@@ -356,6 +282,9 @@ void DebirthProcessor::load(const juce::ValueTree& root)
             rack.mz950.selectProgram((int) sampler.getProperty("program", 0));
     }
 
+    if (const auto effects = root.getChildWithName("Effects"); effects.isValid())
+        loadKnobs(effects, rack.fx);
+
     for (const auto& ch : root.getChildWithName("Mixer"))
     {
         for (int c = 0; c < Rack::channels; ++c)
@@ -364,13 +293,17 @@ void DebirthProcessor::load(const juce::ValueTree& root)
             rack.channel[c].level = (float) ch.getProperty("level", 0.7f);
             rack.channel[c].pan = (float) ch.getProperty("pan", 0.0f);
             rack.channel[c].mute = (bool) ch.getProperty("mute", false);
+            rack.channel[c].dist = (bool) ch.getProperty("dist", false);
+            rack.channel[c].pcf = (bool) ch.getProperty("pcf", false);
+            rack.channel[c].comp = (bool) ch.getProperty("comp", false);
+            rack.channel[c].delay = (float) ch.getProperty("delay", 0.0f);
         }
     }
 
     ++loads;
 }
 
-void DebirthProcessor::startAfresh()
+void DebirthProcessor::startAfresh(bool factoryGrooves)
 {
     rack.tempo = 120.0f;
     rack.shuffle = 0.0f;
@@ -381,6 +314,7 @@ void DebirthProcessor::startAfresh()
     rack.mz808.knobs.reset();
     rack.mz909.knobs.reset();
     rack.mz950.knobs.reset();
+    rack.fx.reset();
 
     for (int m = 0; m < Rack::channels; ++m)
     {
@@ -393,7 +327,13 @@ void DebirthProcessor::startAfresh()
         rack.channel[m].level = 0.7f;
         rack.channel[m].pan = 0.0f;
         rack.channel[m].mute = false;
+        rack.channel[m].dist = false;
+        rack.channel[m].pcf = false;
+        rack.channel[m].comp = false;
+        rack.channel[m].delay = 0.0f;
     }
+
+    if (factoryGrooves) writeFactoryGrooves();
 
     ++loads;
 }

@@ -9,6 +9,7 @@
 // the rack's output stays sane. Links no JUCE.
 //
 
+#include "Core/Grooves.h"
 #include "Core/Rack.h"
 
 #include <algorithm>
@@ -342,8 +343,194 @@ void others()
 #endif
 }
 
+void effects()
+{
+    std::printf("\nthe effects\n");
+
+    static constexpr double rate = 48000;
+    auto sine = [] (std::vector<float>& v, float hz, float amp)
+    {
+        for (size_t i = 0; i < v.size(); ++i) v[i] = amp * (float) std::sin(2.0 * 3.14159265358979 * hz * (double) i / rate);
+    };
+    auto peakOf = [] (const std::vector<float>& v, size_t from = 0)
+    {
+        float p = 0;
+        for (size_t i = from; i < v.size(); ++i) p = std::fmax(p, std::fabs(v[i]));
+        return p;
+    };
+    auto rmsOf = [] (const std::vector<float>& v, size_t from = 0)
+    {
+        double s = 0;
+        for (size_t i = from; i < v.size(); ++i) s += (double) v[i] * v[i];
+        return (float) std::sqrt(s / (double) (v.size() - from));
+    };
+
+    // DIST: full drive squares a sine off - its peak and its loudness close up - and keeps
+    // the level about where it was
+    {
+        std::vector<float> x(4800);
+        sine(x, 220.0f, 0.3f);
+        const float crestIn = peakOf(x) / rmsOf(x);
+        Distortion d;
+        d.prepare(rate);
+        d.process(x.data(), (int) x.size(), 1.0f, 0.5f);
+        const float crestOut = peakOf(x, 960) / rmsOf(x, 960);
+        check(crestOut < crestIn * 0.85f, "DIST squares a sine off", fmt("crest %.2f to %.2f", crestIn, crestOut));
+        check(peakOf(x) < 0.6f && peakOf(x) > 0.15f, "and keeps its level", fmt("peak %.2f from 0.30", peakOf(x)));
+    }
+
+    // PCF: shut, a 2 kHz tone is gone; the envelope full open, it comes through
+    {
+        EffectSettings s;
+        s.pcfFreq = 0.1f;
+        s.pcfAmount = 1.0f;
+        s.pcfQ = 0.0f;
+
+        std::vector<float> shut(4800), open(4800), env(4800);
+        sine(shut, 2000.0f, 0.5f);
+        sine(open, 2000.0f, 0.5f);
+
+        PatternFilter f;
+        f.prepare(rate);
+        std::fill(env.begin(), env.end(), 0.0f);
+        f.process(shut.data(), nullptr, env.data(), 4800, s);
+        f.reset();
+        std::fill(env.begin(), env.end(), 1.0f);
+        f.process(open.data(), nullptr, env.data(), 4800, s);
+
+        check(rmsOf(shut, 960) < 0.01f && rmsOf(open, 960) > 0.25f, "the PCF opens as its envelope is struck",
+              fmt("rms %.4f shut, %.3f open", rmsOf(shut, 960), rmsOf(open, 960)));
+    }
+
+    // DELAY: a click comes back the time later, and again, quieter
+    {
+        StepDelay d;
+        d.prepare(rate, 1.0);
+        std::vector<float> in(9000, 0.0f), l(9000, 0.0f), r(9000, 0.0f);
+        in[0] = 1.0f;
+        d.process(in.data(), l.data(), r.data(), 9000, 3000.0, 0.5f, 0.0f);
+
+        int first = -1;
+        for (int i = 0; i < 9000 && first < 0; ++i) if (std::fabs(l[(size_t) i]) > 0.05f) first = i;
+        float second = 0;
+        for (int i = 5900; i < 6100; ++i) second = std::fmax(second, std::fabs(l[(size_t) i]));
+        check(first >= 3000 && first <= 3002, "the DELAY's echo comes back on time", fmt("at sample %d of 3000", first));
+        check(second > 0.02f && second < peakOf(l), "and again, quieter, with feedback", fmt("%.3f", second));
+    }
+
+    // COMP: a loud tone pulled down; a quiet one let be (and lifted by the make-up)
+    {
+        Compressor c;
+        c.prepare(rate);
+        std::vector<float> loud(9600), quiet(9600);
+        sine(loud, 300.0f, 1.0f);
+        sine(quiet, 300.0f, 0.02f);
+        c.process(loud.data(), nullptr, 9600, -20.0f, 20.0f);
+        c.prepare(rate);
+        c.process(quiet.data(), nullptr, 9600, -20.0f, 20.0f);
+        check(peakOf(loud, 4800) < 0.5f, "the COMP pulls a loud tone down", fmt("peak %.2f from 1.00", peakOf(loud, 4800)));
+        check(peakOf(quiet, 4800) > 0.02f, "and leaves a quiet one standing", fmt("peak %.3f from 0.020", peakOf(quiet, 4800)));
+    }
+
+    // In the rack: the 808 through every insert and the delay, stopped, and its echo still
+    // rings on after
+    {
+        Rack r;
+        r.prepare(48000, 480);
+        r.tempo = 125;
+        r.mz808.track.patterns[0].set(tr808::Voice::BD, 0, true);
+        auto& ch = r.channel[Rack::M808];
+        ch.dist = true;
+        ch.pcf = true;
+        ch.comp = true;
+        ch.delay = 1.0f;
+        r.fx.set(r.fx.indexOf("compMaster"), 1.0f);
+        r.fx.set(r.fx.indexOf("delaySteps"), 8.0f);
+        r.fx.set(r.fx.indexOf("delayFeedback"), 0.6f);
+
+        r.playing = true;
+        bool finite = true;
+        float peak = 0;
+        play(r, 12 * 4, 480, [&] (int, auto& l, auto& rr)
+        {
+            for (size_t i = 0; i < l.size(); ++i)
+            {
+                finite &= std::isfinite(l[i]) && std::isfinite(rr[i]);
+                peak = std::fmax(peak, std::fabs(l[i]));
+            }
+        });
+        check(r.pcfStep() == 3, "the PCF follows the steps", fmt("on step %d", r.pcfStep() + 1));
+
+        r.playing = false;
+        float echo = 0;
+        // the kick was at 0; eight steps on (96 blocks) it comes back, with the rack stopped
+        play(r, 12 * 4 + 8, 480, [] (int, auto&, auto&) {});
+        play(r, 12, 480, [&] (int, auto& l, auto&) { for (float x : l) echo = std::fmax(echo, std::fabs(x)); });
+        check(finite && peak > 0.05f && peak < 4.0f, "through every effect, the 808 stays sane", fmt("peak %.2f", peak));
+        check(echo > 0.01f, "and its echo rings on after STOP", fmt("peak %.3f", echo));
+    }
+}
+
+void grooves()
+{
+    std::printf("\nthe factory grooves\n");
+
+    Rack r;
+    r.prepare(48000, 512);
+
+    const auto problems = writeGrooves(r);
+    check(problems.empty(), "every factory groove reads", problems.empty() ? std::string() : problems.front());
+    for (size_t i = 1; i < problems.size() && i < 8; ++i) std::printf("        %s\n", problems[i].c_str());
+
+    // every slot has a part for the bass line and for one drum machine at least
+    int empty = 0;
+    for (int i = 0; i < patternsPerTrack; ++i)
+    {
+        bool bass = false, beat = false;
+        for (int s = 0; s < stepsPerPattern; ++s) bass |= r.mz303.track.patterns[i].get(s).gate;
+        for (int v = 0; v < DrumPattern::voices; ++v)
+            beat |= ! r.mz808.track.patterns[i].rowIsEmpty(v) || ! r.mz909.track.patterns[i].rowIsEmpty(v);
+        empty += bass && beat ? 0 : 1;
+    }
+    check(empty == 0, "all 32 have a bass line and a beat", fmt("%d without", empty));
+
+#ifdef MZ950_DISKS
+    std::string error;
+    if (r.mz950.loadDisk(std::string(MZ950_DISKS) + "/DRUMS.hfe", error))
+    {
+        const auto sampler = writeSamplerGrooves(r.mz950);
+        check(sampler.empty(), "and the 950's find their sounds on the drum disk", sampler.empty() ? std::string() : sampler.front());
+    }
+#endif
+
+    // a bar of each, everything playing at once, stays sane
+    r.mz950.service();
+    float peak = 0;
+    bool finite = true;
+    std::vector<float> l(512), rr(512);
+    for (int i = 0; i < patternsPerTrack; ++i)
+    {
+        for (int m = 0; m < Rack::channels; ++m) r.track(m).selected = i;
+        r.playing = false;
+        r.render(l.data(), rr.data(), 512);
+        r.playing = true;
+        for (int b = 0; b < 48000 * 60 / 128 * 4 / 512; ++b)
+        {
+            r.render(l.data(), rr.data(), 512);
+            for (size_t k = 0; k < l.size(); ++k)
+            {
+                finite &= std::isfinite(l[k]) && std::isfinite(rr[k]);
+                peak = std::fmax(peak, std::fmax(std::fabs(l[k]), std::fabs(rr[k])));
+            }
+        }
+    }
+    check(finite && peak > 0.1f && peak < 4.0f, "a bar of each, all five machines playing, stays sane", fmt("peak %.2f", peak));
+}
+
 int main()
 {
+    grooves();
+    effects();
     timing();
     bassLine();
     drums();
