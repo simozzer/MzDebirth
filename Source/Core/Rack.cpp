@@ -1,0 +1,296 @@
+// MzDebirth - Copyright (C) 2026 Simon Moscrop
+// Free software under the GNU AGPL v3; see LICENSE.
+
+#include "Rack.h"
+
+#include <cmath>
+
+namespace debirth
+{
+
+//============================================================================== the panels
+
+const std::vector<Control<tb303::Settings>>& controls303()
+{
+    using S = tb303::Settings;
+    static const std::vector<Control<S>> table = {
+        { "tune",   "TUNING",  -100.0f, 100.0f, &S::tune },
+        { "cutoff", "CUT OFF",    0.0f,  10.0f, &S::cutoff },
+        { "res",    "RESO",       0.0f,  10.0f, &S::res },
+        { "envMod", "ENV MOD",    0.0f,  10.0f, &S::envMod },
+        { "decay",  "DECAY",      0.0f,  10.0f, &S::decay },
+        { "accent", "ACCENT",     0.0f,  10.0f, &S::accent },
+        { "wave",   "WAVEFORM",   0.0f,   1.0f, nullptr, &S::wave, "SAW|SQR" },
+        { "volume", "VOLUME",     0.0f,  10.0f, &S::volume },
+    };
+    return table;
+}
+
+//
+// The 101's panel, less what the rack does for it: its arpeggiator, its sequencer and its
+// clock are the rack's now, and there is no bender to set the range of.
+//
+const std::vector<Control<sh101::Settings>>& controls101()
+{
+    using S = sh101::Settings;
+    static const std::vector<Control<S>> table = {
+        { "lfoRate",   "RATE",     0, 10, &S::lfoRate },
+        { "lfoWave",   "WAVE",     0,  3, nullptr, &S::lfoWave,   "TRI|SQR|RND|NOISE" },
+        { "lfoSync",   "SYNC",     0,  1, nullptr, &S::lfoSync,   "FREE|TEMPO" },
+        { "vcoMod",    "MOD",      0, 10, &S::vcoMod },
+        { "range",     "RANGE",    0,  3, nullptr, &S::range,     "16'|8'|4'|2'" },
+        { "pw",        "PW",       0, 10, &S::pw },
+        { "pwmSource", "PWM",      0,  2, nullptr, &S::pwmSource, "LFO|MAN|ENV" },
+        { "pulse",     "PULSE",    0, 10, &S::pulse },
+        { "saw",       "SAW",      0, 10, &S::saw },
+        { "sub",       "SUB",      0, 10, &S::sub },
+        { "subType",   "SUB WAVE", 0,  2, nullptr, &S::subType,   "-1 OCT|-2 OCT|-2 PLS" },
+        { "noise",     "NOISE",    0, 10, &S::noise },
+        { "portaMode", "PORTA",    0,  2, nullptr, &S::portaMode, "OFF|AUTO|ON" },
+        { "portaTime", "TIME",     0, 10, &S::portaTime },
+        { "cutoff",    "FREQ",     0, 10, &S::cutoff },
+        { "res",       "RES",      0, 10, &S::res },
+        { "vcfEnv",    "ENV",      0, 10, &S::vcfEnv },
+        { "vcfMod",    "MOD",      0, 10, &S::vcfMod },
+        { "vcfKybd",   "KYBD",     0, 10, &S::vcfKybd },
+        { "vcaMode",   "VCA",      0,  1, nullptr, &S::vcaMode,   "ENV|GATE" },
+        { "envTrig",   "TRIG",     0,  2, nullptr, &S::envTrig,   "G+T|GATE|LFO" },
+        { "attack",    "A",        0, 10, &S::attack },
+        { "decay",     "D",        0, 10, &S::decay },
+        { "sustain",   "S",        0, 10, &S::sustain },
+        { "release",   "R",        0, 10, &S::release },
+        { "transpose", "TRANS",    0,  2, nullptr, &S::transpose, "LOW|MID|HIGH" },
+        { "tune",      "TUNE",   -50, 50, &S::tune },
+        { "volume",    "VOLUME",   0, 10, &S::volume },
+    };
+    return table;
+}
+
+const std::vector<Control<tr808::Settings>>& controls808()
+{
+    using S = tr808::Settings;
+    static const std::vector<Control<S>> table = {
+        { "accent",   "ACCENT", 0, 10, &S::accent },
+        { "bdLevel",  "LEVEL",  0, 10, &S::bdLevel },
+        { "bdTone",   "TONE",   0, 10, &S::bdTone },
+        { "bdDecay",  "DECAY",  0, 10, &S::bdDecay },
+        { "sdLevel",  "LEVEL",  0, 10, &S::sdLevel },
+        { "sdTone",   "TONE",   0, 10, &S::sdTone },
+        { "sdSnappy", "SNAPPY", 0, 10, &S::sdSnappy },
+        { "ltLevel",  "LEVEL",  0, 10, &S::ltLevel },
+        { "ltTuning", "TUNING", 0, 10, &S::ltTuning },
+        { "mtLevel",  "LEVEL",  0, 10, &S::mtLevel },
+        { "mtTuning", "TUNING", 0, 10, &S::mtTuning },
+        { "htLevel",  "LEVEL",  0, 10, &S::htLevel },
+        { "htTuning", "TUNING", 0, 10, &S::htTuning },
+        { "rsLevel",  "LEVEL",  0, 10, &S::rsLevel },
+        { "cpLevel",  "LEVEL",  0, 10, &S::cpLevel },
+        { "cbLevel",  "LEVEL",  0, 10, &S::cbLevel },
+        { "cyLevel",  "LEVEL",  0, 10, &S::cyLevel },
+        { "cyTone",   "TONE",   0, 10, &S::cyTone },
+        { "cyDecay",  "DECAY",  0, 10, &S::cyDecay },
+        { "ohLevel",  "LEVEL",  0, 10, &S::ohLevel },
+        { "ohDecay",  "DECAY",  0, 10, &S::ohDecay },
+        { "chLevel",  "LEVEL",  0, 10, &S::chLevel },
+        { "volume",   "VOLUME", 0, 10, &S::volume },
+    };
+    return table;
+}
+
+const std::vector<Control<tr909::Settings>>& controls909()
+{
+    using S = tr909::Settings;
+    static const std::vector<Control<S>> table = {
+        { "accent",   "ACCENT", 0, 10, &S::accent },
+        { "bdLevel",  "LEVEL",  0, 10, &S::bdLevel },
+        { "bdTune",   "TUNE",   0, 10, &S::bdTune },
+        { "bdAttack", "ATTACK", 0, 10, &S::bdAttack },
+        { "bdDecay",  "DECAY",  0, 10, &S::bdDecay },
+        { "sdLevel",  "LEVEL",  0, 10, &S::sdLevel },
+        { "sdTune",   "TUNE",   0, 10, &S::sdTune },
+        { "sdTone",   "TONE",   0, 10, &S::sdTone },
+        { "sdSnappy", "SNAPPY", 0, 10, &S::sdSnappy },
+        { "ltLevel",  "LEVEL",  0, 10, &S::ltLevel },
+        { "ltTune",   "TUNE",   0, 10, &S::ltTune },
+        { "ltDecay",  "DECAY",  0, 10, &S::ltDecay },
+        { "mtLevel",  "LEVEL",  0, 10, &S::mtLevel },
+        { "mtTune",   "TUNE",   0, 10, &S::mtTune },
+        { "mtDecay",  "DECAY",  0, 10, &S::mtDecay },
+        { "htLevel",  "LEVEL",  0, 10, &S::htLevel },
+        { "htTune",   "TUNE",   0, 10, &S::htTune },
+        { "htDecay",  "DECAY",  0, 10, &S::htDecay },
+        { "rsLevel",  "RIM",    0, 10, &S::rsLevel },
+        { "cpLevel",  "CLAP",   0, 10, &S::cpLevel },
+        { "hhLevel",  "LEVEL",  0, 10, &S::hhLevel },
+        { "chDecay",  "CH DEC", 0, 10, &S::chDecay },
+        { "ohDecay",  "OH DEC", 0, 10, &S::ohDecay },
+        { "crLevel",  "LEVEL",  0, 10, &S::crLevel },
+        { "crTune",   "TUNE",   0, 10, &S::crTune },
+        { "rdLevel",  "LEVEL",  0, 10, &S::rdLevel },
+        { "rdTune",   "TUNE",   0, 10, &S::rdTune },
+        { "volume",   "VOLUME", 0, 10, &S::volume },
+    };
+    return table;
+}
+
+//============================================================================== Rack
+
+Rack::Rack()
+    : mz303(controls303(), 36),   // C2
+      mz101(controls101(), 48),   // C3, the 101's own middle
+      mz808(controls808()),
+      mz909(controls909())
+{
+}
+
+TrackBase& Rack::track(int machine)
+{
+    switch (machine)
+    {
+        case M303: return mz303.track;
+        case M101: return mz101.track;
+        case M808: return mz808.track;
+        case M909: return mz909.track;
+        default:   return mz950.track;
+    }
+}
+
+void Rack::prepare(double sampleRate, int maxBlock)
+{
+    blockSize = maxBlock > 0 ? maxBlock : 512;
+    for (auto& b : buffers) b.assign((size_t) blockSize, 0.0f);
+    sampleRight.assign((size_t) blockSize, 0.0f);
+
+    clock.prepare(sampleRate);
+    clock.stop();
+
+    mz303.prepare(sampleRate);
+    mz101.prepare(sampleRate);
+    mz808.prepare(sampleRate);
+    mz909.prepare(sampleRate);
+    mz950.prepare(sampleRate);
+
+    mz303.stop();
+    mz101.stop();
+    mz808.stop();
+    mz909.stop();
+    mz950.stop();
+}
+
+void Rack::render(float* left, float* right, int n)
+{
+    while (n > 0)
+    {
+        const int chunk = n < blockSize ? n : blockSize;
+        renderBlock(left, right, chunk);
+        left += chunk;
+        right += chunk;
+        n -= chunk;
+    }
+}
+
+void Rack::renderMachines(int from, int to)
+{
+    const int n = to - from;
+    if (n <= 0) return;
+
+    mz303.render(buffers[M303].data() + from, n);
+    mz101.render(buffers[M101].data() + from, n);
+    mz808.render(buffers[M808].data() + from, n);
+    mz909.render(buffers[M909].data() + from, n);
+    mz950.render(buffers[M950].data() + from, sampleRight.data() + from, n);
+}
+
+void Rack::renderBlock(float* left, float* right, int n)
+{
+    // the transport, as the panel last left it
+    const bool wanted = playing.load();
+    if (wanted != clock.isRunning())
+    {
+        if (wanted)
+        {
+            clock.start();
+            mz303.start(); mz101.start(); mz808.start(); mz909.start(); mz950.start();
+        }
+        else
+        {
+            clock.stop();
+            mz303.stop(); mz101.stop(); mz808.stop(); mz909.stop(); mz950.stop();
+        }
+    }
+
+    clock.setTempo(tempo.load());
+    clock.setShuffle(shuffle.load());
+
+    const bool running = clock.isRunning();
+    const double quarters = clock.quarters(), bpm = clock.getTempo();
+    mz303.update(running, quarters, bpm);
+    mz101.update(running, quarters, bpm);
+    mz808.update();
+    mz909.update();
+    mz950.update(running, quarters, bpm);
+
+    int lane[channels];
+    for (int m = 0; m < channels; ++m)
+        lane[m] = track(m).shuffle.load() ? 1 : 0;
+
+    // Render up to each event, then act on it, so every step lands on its sample.
+    int pos = 0;
+    clock.advance(n, [&] (int at, int l, Clock::Event e, int64_t)
+    {
+        renderMachines(pos, at);
+        pos = at > pos ? at : pos;
+
+        const bool isStep = e == Clock::Event::Step;
+        if (l == lane[M303]) { if (isStep) mz303.step(); else mz303.gateOff(); }
+        if (l == lane[M101]) { if (isStep) mz101.step(); else mz101.gateOff(); }
+        if (l == lane[M808] && isStep) mz808.step();
+        if (l == lane[M909] && isStep) mz909.step();
+        if (l == lane[M950]) { if (isStep) mz950.step(); else mz950.gateOff(); }
+    });
+    renderMachines(pos, n);
+
+    // The mixer. Each gain ramps across the block from where it was, so moving a fader
+    // does not click.
+    const float masterTo = master.load() * master.load();
+    const float inv = 1.0f / (float) n;
+
+    for (int i = 0; i < n; ++i) left[i] = right[i] = 0.0f;
+
+    for (int c = 0; c < channels; ++c)
+    {
+        const Channel& ch = channel[c];
+        const float level = ch.mute.load() ? 0.0f : ch.level.load() * ch.level.load();
+        const float angle = (ch.pan.load() + 1.0f) * 0.25f * 3.14159265f;
+        const float toL = level * std::cos(angle) * 1.41421356f;
+        const float toR = level * std::sin(angle) * 1.41421356f;
+
+        const float* srcL = buffers[c].data();
+        const float* srcR = c == M950 ? sampleRight.data() : srcL;
+        const float dl = (toL - gainL[c]) * inv, dr = (toR - gainR[c]) * inv;
+        float gl = gainL[c], gr = gainR[c];
+
+        for (int i = 0; i < n; ++i)
+        {
+            gl += dl;
+            gr += dr;
+            left[i] += srcL[i] * gl;
+            right[i] += srcR[i] * gr;
+        }
+
+        gainL[c] = toL;
+        gainR[c] = toR;
+    }
+
+    const float dm = (masterTo - masterGain) * inv;
+    float gm = masterGain;
+    for (int i = 0; i < n; ++i)
+    {
+        gm += dm;
+        left[i] *= gm;
+        right[i] *= gm;
+    }
+    masterGain = masterTo;
+}
+
+} // namespace debirth

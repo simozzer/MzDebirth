@@ -1,0 +1,77 @@
+#
+# MzDebirth - Copyright (C) 2026 Simon Moscrop
+#
+# Build every release's downloads on GitHub and attach them to it, so a release never goes
+# out without its installer.
+#
+# Triggered by pushing a version tag (git push origin v0.2.0), or by creating a release with
+# a new tag on GitHub, which pushes the tag. If the release already exists the files are
+# added to it; if not, a draft is made with the notes in docs/releases/<tag>.md, to read over
+# and publish.
+#
+# The rack plays the synths' own engines, compiled from their repositories, so those are
+# checked out beside this one, as on a desk - each at its default branch.
+#
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "An existing tag to rebuild the downloads for, e.g. v0.2.0"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+  # The JUCE the app is built and tested against. Move it on deliberately, not by accident.
+  JUCE_TAG: "9.0.2"
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: JUCE and the synths, beside the repository
+        run: |
+          git clone --depth 1 --branch $env:JUCE_TAG https://github.com/juce-framework/JUCE ../JUCE
+          foreach ($synth in "Mz101", "Mz303", "Mz808", "Mz909", "Mz950") {
+              git clone --depth 1 "https://github.com/simozzer/$synth" "../$synth"
+              if ($LASTEXITCODE -ne 0) { throw "could not clone $synth" }
+          }
+
+      - name: The tag matches the version in CMakeLists.txt
+        run: |
+          if ((Get-Content CMakeLists.txt -Raw) -notmatch "project\(MzDebirth VERSION ([0-9.]+)") { throw "no version in CMakeLists.txt" }
+          if ("v$($Matches[1])" -ne $env:TAG) { throw "tag $env:TAG but CMakeLists.txt says $($Matches[1]) - bump the version before tagging" }
+          "VERSION=$($Matches[1])" >> $env:GITHUB_ENV
+
+      - name: Inno Setup
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+
+      - name: Build, check and package
+        run: ./build.ps1 -Release
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $files = "win64-Setup.exe", "win64.zip" | ForEach-Object { "dist/MzDebirth-$env:VERSION-$_" }
+
+          gh release view $env:TAG *> $null
+          if ($LASTEXITCODE -eq 0) {
+              gh release upload $env:TAG @files --clobber
+          } else {
+              $notes = "docs/releases/$env:TAG.md"
+              if (Test-Path $notes) { $from = @("--notes-file", $notes) } else { $from = @("--generate-notes") }
+              gh release create $env:TAG @files --draft --title "MzDebirth $env:VERSION" @from
+          }
+          if ($LASTEXITCODE -ne 0) { throw "could not attach the files to $env:TAG" }

@@ -1,0 +1,18 @@
+# CMake's build tree, and JUCE's compiled artefacts inside it.
+build/
+
+# Objects and executables left beside the sources when cl is run by hand.
+*.obj
+*.exe
+*.pdb
+*.ilk
+
+# Renders written by the DSP check.
+*.wav
+
+# Editor caches.
+.vs/
+.vscode/
+
+# Release zips, built for uploading to GitHub - not source.
+dist/
