@@ -59,6 +59,7 @@ set(MZ950_ENGINE "${MZ950_PATH}/Plugin/Source/S950")
 set(CORE_SOURCES
     Source/Core/Effects.cpp
     Source/Core/Grooves.cpp
+    Source/Core/Key.cpp
     Source/Core/Rack.cpp
     Source/Core/Sampler.cpp
     "${MZ101_PATH}/Source/SH101/Engine.cpp"
@@ -113,6 +114,7 @@ target_sources(MzDebirth PRIVATE
     Source/UI/MonoRack.cpp
     Source/UI/DrumRack.cpp
     Source/UI/EffectsBar.cpp
+    Source/UI/KeyPanel.cpp
     Source/UI/SamplerRack.cpp
     Source/UI/MainPanel.cpp
     ${CORE_SOURCES})

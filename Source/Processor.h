@@ -45,6 +45,11 @@ public:
     void load(const juce::ValueTree&);
     void startAfresh(bool factoryGrooves);   // every pattern cleared - or filled with the factory grooves
 
+    // The KEY section: the bank it works on - the one the Mz303 shows - and its two buttons.
+    int keyBank() const { return rack.mz303.track.selected.load() / debirth::patternsPerBank; }
+    void generateInKey();
+    void transposeToKey();
+
     // bumped by every load, so the panel knows to read itself back
     int loadCount() const { return loads.load(); }
 

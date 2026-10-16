@@ -527,8 +527,100 @@ void grooves()
     check(finite && peak > 0.1f && peak < 4.0f, "a bar of each, all five machines playing, stays sane", fmt("peak %.2f", peak));
 }
 
+void keys()
+{
+    std::printf("\nkeys\n");
+
+    // the Camelot wheel, as Mixed In Key names it
+    const Key a8 { 8, false }, b8 { 8, true }, a5 { 5, false }, b1 { 1, true }, a12 { 12, false };
+    check(a8.name() == "A minor" && b8.name() == "C major" && a5.name() == "C minor"
+          && b1.name() == "B major" && a12.name() == "Db minor",
+          "the wheel's codes name the right keys", "8A " + a8.name() + ", 8B " + b8.name() + ", 12A " + a12.name());
+
+    const auto mixes = Key { 12, false }.compatible();
+    check(mixes.size() == 4 && mixes[1].code() == "11A" && mixes[2].code() == "1A" && mixes[3].code() == "12B",
+          "12A mixes with 11A, 1A and 12B", mixes[1].code() + " " + mixes[2].code() + " " + mixes[3].code());
+
+    // the factory banks' keys, found from their notes
+    Rack r;
+    writeGrooves(r);
+    std::string found;
+    int right = 0;
+    for (int b = 0; b < banks; ++b)
+    {
+        const Key k = detectKey(r, b);
+        found += std::string(1, (char) ('A' + b)) + " " + k.code() + "  ";
+        right += k == factoryKey(b) ? 1 : 0;
+    }
+    check(right == banks, "every factory bank's key is found from its notes", found);
+
+    // C minor into C major, degree for degree: E flat becomes E, C stays C
+    auto pitchesOf = [] (Track<BassPattern>& t, int root, int index)
+    {
+        std::vector<int> v;
+        const auto& p = t.patterns[index];
+        for (int s = 0; s < stepsPerPattern; ++s)
+            if (const BassStep st = p.get(s); st.gate) v.push_back(root + st.note + 12 * st.octave);
+        return v;
+    };
+    const auto before = pitchesOf(r.mz303.track, r.mz303.rootNote, 0);
+    transposeBank(r, 0, a5, Key { 8, true });
+    const auto after = pitchesOf(r.mz303.track, r.mz303.rootNote, 0);
+    bool degreeForDegree = before.size() == after.size();
+    for (size_t i = 0; i < before.size() && degreeForDegree; ++i)
+    {
+        const int pc = before[i] % 12, moved = after[i] - before[i];
+        degreeForDegree &= (pc == 3 || pc == 8 || pc == 10) ? moved == 1 : moved == 0;   // Eb, Ab, Bb up a semitone
+    }
+    check(degreeForDegree && r.bankKey[0] == Key { 8, true }.index(), "5A into 8B keeps the tonic and raises the third");
+
+    // and into A minor, every note down three semitones
+    Rack r2;
+    writeGrooves(r2);
+    transposeBank(r2, 0, a5, a8);
+    const auto down = pitchesOf(r2.mz303.track, r2.mz303.rootNote, 0);
+    bool allDown = down.size() == before.size();
+    for (size_t i = 0; i < down.size() && allDown; ++i) allDown &= before[i] - down[i] == 3 || before[i] - down[i] == -9;
+    check(allDown, "5A into 8A moves every note down a minor third");
+
+    // GENERATE, in every key and every style: every note of the bass and lead in the key,
+    // something in every groove, and the bank marked with its key
+    int outside = 0, silent = 0, wrongKey = 0;
+    for (int i = 0; i < 24; ++i)
+        for (int style = 0; style < Style::count; ++style)
+        {
+            const Key k = Key::fromIndex(i);
+            generateBank(r, 2, k, style, (unsigned) (i * 7 + style));
+            wrongKey += r.bankKey[2] == k.index() ? 0 : 1;
+            for (int n = 0; n < patternsPerBank; ++n)
+            {
+                const int index = 2 * patternsPerBank + n;
+                int notes = 0;
+                auto look = [&] (const std::vector<int>& pitches)
+                {
+                    for (int p : pitches) { ++notes; outside += k.contains(p % 12) ? 0 : 1; }
+                };
+                look(pitchesOf(r.mz303.track, r.mz303.rootNote, index));
+                look(pitchesOf(r.mz101.track, r.mz101.rootNote, index));
+                silent += notes == 0 ? 1 : 0;
+            }
+        }
+    check(outside == 0, "GENERATE writes only the key's notes, in all 24 keys and 4 styles", fmt("%d outside", outside));
+    check(silent == 0 && wrongKey == 0, "and every pattern has a part, the bank its key", fmt("%d silent", silent));
+
+    // the same seed, the same bank
+    Rack x, y;
+    generateBank(x, 1, a8, Style::Acid, 1234);
+    generateBank(y, 1, a8, Style::Acid, 1234);
+    bool same = true;
+    for (int s = 0; s < stepsPerPattern; ++s)
+        same &= x.mz303.track.patterns[8].steps[s].load() == y.mz303.track.patterns[8].steps[s].load();
+    check(same, "the same seed writes the same bank");
+}
+
 int main()
 {
+    keys();
     grooves();
     effects();
     timing();

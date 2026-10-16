@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "Key.h"
 #include "Rack.h"
 
 #include <string>
@@ -31,5 +32,42 @@ namespace debirth
 //
 std::vector<std::string> writeGrooves(Rack&);
 std::vector<std::string> writeSamplerGrooves(Mz950&);
+
+// the keys the factory banks are written in: 5A, 4A, 8A and 6A
+Key factoryKey(int bank);
+
+//==============================================================================
+//
+// GROOVES IN A KEY
+//
+// The styles GENERATE writes, one for each factory bank, whose drums it starts from.
+//
+namespace Style { enum { Acid, Techno, Electro, Deep, count }; }
+const char* styleName(int style);
+
+//
+// The key a bank's bass line and lead are in, from their notes. A guess - a bank of one
+// repeated note could be in any key with that note in it - but the right one for anything
+// with a tune.
+//
+Key detectKey(Rack&, int bank);
+
+//
+// Moves a bank's bass line and lead, and the 950's notes if it is playing a tuned
+// programme rather than a kit, from one key to another, degree by degree: the tonic stays
+// the tonic and the third the third, so C minor into C major turns every E flat to E. The
+// tonic moves the shorter way, so a line never goes up more than a fifth or down more than
+// a fourth. The drums have no key and are left alone.
+//
+void transposeBank(Rack&, int bank, Key from, Key to);
+
+//
+// Fills a bank, on all five machines, with eight new patterns in a key and a style - laid
+// out as the factory banks are: 1 to 3, 6 and 7 grooves, 4 and 8 fills, 5 a breakdown -
+// over a progression the key's chords make. The bass lines and leads are made from the
+// scale; the drums from the style's factory patterns, each moved about a little. The same
+// seed writes the same bank.
+//
+void generateBank(Rack&, int bank, Key, int style, unsigned seed);
 
 } // namespace debirth

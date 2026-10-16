@@ -31,6 +31,15 @@ And for all of them:
   while playing waits for the one playing to come round, and blinks until it does.
 - **Transport** - tempo, a shuffle that each machine can follow or not, and a master level.
   The space bar plays and stops.
+- **Key** - for harmonic mixing, the key as Mixed In Key names it on the Camelot wheel
+  (1A-12A minor, 1B-12B major), with the keys that mix with it. **GENERATE** fills the bank
+  the Mz303 shows, on every machine, with eight new grooves in the key and a STYLE (acid,
+  techno, electro, deep): bass lines and leads from the key's scale over a progression of
+  its chords, drums varied from the style's factory patterns, and the Mz950 playing
+  percussion from a kit or the chords from a tuned programme. **TRANSPOSE** moves that
+  bank's bass lines and leads into the key degree for degree, so a minor groove sent to a
+  major key changes mode rather than just pitch; a bank whose key is not known (one written
+  by hand) has it worked out from its notes. MzDebirth is not affiliated with Mixed In Key.
 - **Mixer** - level, pan and mute for each machine, its switches into the DIST, PCF and
   COMP, and its send to the DELAY.
 - **Effects** - ReBirth's four units, along under the transport. **DIST**: drive and a shape

@@ -5,6 +5,7 @@
 
 #include "DrumRack.h"
 #include "EffectsBar.h"
+#include "KeyPanel.h"
 #include "MonoRack.h"
 #include "SamplerRack.h"
 #include "Processor.h"
@@ -32,6 +33,7 @@ private:
     Pad play { "PLAY" }, stop { "STOP" };
     LedNumber tempo;
     Knob shuffle, master;
+    KeyPanel keyPanel;
     Pad fresh { "NEW" }, open { "LOAD" }, save { "SAVE" };
 };
 

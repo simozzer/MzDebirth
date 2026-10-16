@@ -60,6 +60,35 @@ void DebirthProcessor::writeFactoryGrooves()
     }
 }
 
+//============================================================================== the KEY section
+
+void DebirthProcessor::generateInKey()
+{
+    const int bank = keyBank();
+    generateBank(rack, bank, Key::fromIndex(rack.key.load()), rack.style.load(),
+                 (unsigned) juce::Random::getSystemRandom().nextInt());
+
+    // every machine to the same slot of that bank, so they play the new grooves together
+    const int slot = bank * patternsPerBank + rack.mz303.track.selected.load() % patternsPerBank;
+    for (int m = 0; m < Rack::channels; ++m)
+    {
+        auto& t = rack.track(m);
+        t.selected = slot;
+        if (! rack.playing.load()) t.current = slot;
+    }
+
+    ++loads;
+}
+
+void DebirthProcessor::transposeToKey()
+{
+    const int bank = keyBank();
+    const int known = rack.bankKey[bank].load();
+    const Key from = known >= 0 ? Key::fromIndex(known) : detectKey(rack, bank);
+    transposeBank(rack, bank, from, Key::fromIndex(rack.key.load()));
+    ++loads;
+}
+
 void DebirthProcessor::timerCallback()
 {
     rack.mz950.service();
@@ -219,6 +248,12 @@ juce::ValueTree DebirthProcessor::save() const
     root.setProperty("tempo", rack.tempo.load(), nullptr);
     root.setProperty("shuffle", rack.shuffle.load(), nullptr);
     root.setProperty("master", rack.master.load(), nullptr);
+    root.setProperty("key", juce::String(Key::fromIndex(rack.key.load()).code()), nullptr);
+    root.setProperty("style", styleName(rack.style.load()), nullptr);
+    juce::StringArray bankKeys;
+    for (int b = 0; b < banks; ++b)
+        bankKeys.add(rack.bankKey[b].load() < 0 ? juce::String("-") : juce::String(Key::fromIndex(rack.bankKey[b].load()).code()));
+    root.setProperty("bankKeys", bankKeys.joinIntoString(" "), nullptr);
 
     root.appendChild(saveMachine(machineNames[Rack::M303], rack.mz303), nullptr);
     root.appendChild(saveMachine(machineNames[Rack::M101], rack.mz101), nullptr);
@@ -266,6 +301,21 @@ void DebirthProcessor::load(const juce::ValueTree& root)
     rack.shuffle = (float) root.getProperty("shuffle", 0.0f);
     rack.master = (float) root.getProperty("master", 0.8f);
 
+    // the key, as its code: "8A"; -1 for anything else
+    auto keyOf = [] (const juce::String& code)
+    {
+        const int number = code.dropLastCharacters(1).getIntValue();
+        const auto letter = code.getLastCharacter();
+        if (number < 1 || number > 12 || (letter != 'A' && letter != 'B')) return -1;
+        return Key { number, letter == 'B' }.index();
+    };
+    if (const int k = keyOf(root.getProperty("key").toString()); k >= 0) rack.key = k;
+    for (int s = 0; s < Style::count; ++s)
+        if (root.getProperty("style").toString() == styleName(s)) rack.style = s;
+    const auto bankKeys = juce::StringArray::fromTokens(root.getProperty("bankKeys").toString(), " ", "");
+    for (int b = 0; b < banks && b < bankKeys.size(); ++b)
+        rack.bankKey[b] = keyOf(bankKeys[b]);
+
     loadMachine(root, machineNames[Rack::M303], rack.mz303);
     loadMachine(root, machineNames[Rack::M101], rack.mz101);
     loadMachine(root, machineNames[Rack::M808], rack.mz808);
@@ -308,6 +358,7 @@ void DebirthProcessor::startAfresh(bool factoryGrooves)
     rack.tempo = 120.0f;
     rack.shuffle = 0.0f;
     rack.master = 0.8f;
+    for (auto& k : rack.bankKey) k = -1;   // the KEY and STYLE are the DJ's, and stay
 
     rack.mz303.knobs.reset();
     rack.mz101.knobs.reset();

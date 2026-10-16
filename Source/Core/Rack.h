@@ -5,6 +5,7 @@
 
 #include "Clock.h"
 #include "Effects.h"
+#include "Key.h"
 #include "Machines.h"
 #include "Sampler.h"
 
@@ -63,6 +64,13 @@ public:
 
     // the effects units' knobs
     Knobs<EffectSettings> fx { controlsFx() };
+
+    // The key the panel's KEY is set to (a Key::index()), the style GENERATE writes in, and
+    // the key each bank was written or moved into: -1 where nobody knows - a bank written by
+    // hand - and TRANSPOSE has to work it out from the notes.
+    std::atomic<int> key   { Key { 8, false }.index() };   // 8A, A minor
+    std::atomic<int> style { 0 };
+    std::atomic<int> bankKey[banks] { -1, -1, -1, -1 };
 
     // any thread: the PCF's step, for its lights; -1 stopped
     int pcfStep() const { return pcfPosition.load(std::memory_order_relaxed); }

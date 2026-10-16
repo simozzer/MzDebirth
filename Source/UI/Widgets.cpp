@@ -159,7 +159,7 @@ void Switch::resized()
 {
     auto r = getLocalBounds();
     r.removeFromTop(14);
-    pad.setBounds(r.withSizeKeepingCentre(juce::jmin(r.getWidth(), 46), 24));
+    pad.setBounds(r.withSizeKeepingCentre(juce::jmin(r.getWidth(), padWidth), 24));
 }
 
 void Switch::paint(juce::Graphics& g)

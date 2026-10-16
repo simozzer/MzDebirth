@@ -24,7 +24,8 @@ TransportBar::TransportBar(DebirthProcessor& p)
       shuffle("SHUFFLE", 0.0f, 1.0f, 0.0f,
               [&p] { return p.rack.shuffle.load(); }, [&p] (float v) { p.rack.shuffle = v; }),
       master("MASTER", 0.0f, 1.0f, 0.8f,
-             [&p] { return p.rack.master.load(); }, [&p] (float v) { p.rack.master = v; })
+             [&p] { return p.rack.master.load(); }, [&p] (float v) { p.rack.master = v; }),
+      keyPanel(p)
 {
     play.setLedColour(colours::ledGreen);
     play.setTooltip("Play, from the top of each pattern. The space bar plays and stops.");
@@ -59,12 +60,15 @@ TransportBar::TransportBar(DebirthProcessor& p)
         b->setShowsLed(false);
         addAndMakeVisible(*b);
     }
+
+    addAndMakeVisible(keyPanel);
 }
 
 void TransportBar::tick()
 {
     const bool playing = processor.rack.playing.load();
     play.setLit(playing);
+    keyPanel.tick();
     stop.setLit(! playing);
     tempo.repaint();
 }
@@ -73,13 +77,14 @@ void TransportBar::refresh()
 {
     shuffle.refresh();
     master.refresh();
+    keyPanel.refresh();
     tempo.repaint();
 }
 
 void TransportBar::resized()
 {
     auto r = getLocalBounds().reduced(10, 8);
-    r.removeFromLeft(220);   // the name
+    r.removeFromLeft(200);   // the name
 
     play.setBounds(r.removeFromLeft(64));
     r.removeFromLeft(6);
@@ -92,11 +97,13 @@ void TransportBar::resized()
     r.removeFromLeft(8);
     master.setBounds(r.removeFromLeft(56));
 
-    save.setBounds(r.removeFromRight(64).withSizeKeepingCentre(64, 30));
+    save.setBounds(r.removeFromRight(56).withSizeKeepingCentre(56, 30));
     r.removeFromRight(6);
-    open.setBounds(r.removeFromRight(64).withSizeKeepingCentre(64, 30));
+    open.setBounds(r.removeFromRight(56).withSizeKeepingCentre(56, 30));
     r.removeFromRight(6);
-    fresh.setBounds(r.removeFromRight(64).withSizeKeepingCentre(64, 30));
+    fresh.setBounds(r.removeFromRight(56).withSizeKeepingCentre(56, 30));
+
+    keyPanel.setBounds(r.reduced(16, 0));
 }
 
 void TransportBar::paint(juce::Graphics& g)

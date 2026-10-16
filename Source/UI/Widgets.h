@@ -79,6 +79,7 @@ public:
            std::function<int()> get, std::function<void(int)> set);
 
     void setLegendInk(juce::Colour c) { legendInk = c; repaint(); }
+    void setPadWidth(int w)           { padWidth = w; resized(); }
     void refresh();
 
     void paint(juce::Graphics&) override;
@@ -89,6 +90,7 @@ private:
     juce::StringArray positions;
     juce::Colour legendInk { colours::ink };
     Pad pad;
+    int padWidth = 46;
     std::function<int()> get;
     std::function<void(int)> set;
 };

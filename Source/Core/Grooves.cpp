@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <functional>
+#include <random>
 #include <sstream>
 
 namespace debirth
@@ -425,15 +427,25 @@ std::vector<std::string> writeGrooves(Rack& rack)
     rack.tempo = 128.0f;
     rack.shuffle = 0.15f;
 
+    for (int b = 0; b < banks; ++b)
+        rack.bankKey[b] = factoryKey(b).index();
+
     return problems;
 }
 
-std::vector<std::string> writeSamplerGrooves(Mz950& s)
+Key factoryKey(int bank)
 {
-    std::vector<std::string> problems;
+    static const Key keys[banks] = { { 5, false }, { 4, false }, { 8, false }, { 6, false } };
+    return keys[std::clamp(bank, 0, banks - 1)];
+}
 
-    // the kit's keys by sample name
-    const auto spans = s.keySpans();
+namespace
+{
+
+// A sampler pattern, written from its text, the kit's keys found by their sample names.
+void sampler(const std::vector<Mz950::Span>& spans, NotePattern& p, const char* text,
+             const std::string& at, std::vector<std::string>& problems)
+{
     auto keyOf = [&spans] (const std::string& name)
     {
         for (const auto& sp : spans)
@@ -441,31 +453,485 @@ std::vector<std::string> writeSamplerGrooves(Mz950& s)
         return -1;
     };
 
-    for (int b = 0; b < banks; ++b)
+    p.clear();
+    for (const auto& row : split(text, '|'))
     {
+        const auto eq = row.find('=');
+        const std::string name = trim(row.substr(0, eq));
+        const std::string steps = eq == std::string::npos ? std::string() : trim(row.substr(eq + 1));
+
+        const int r = name == "AC" ? NotePattern::accentRow : name == "TIE" ? NotePattern::tieRow : keyOf(name);
+        uint32_t bits = 0;
+        if (r < 0)                       problems.push_back(at + ": no sample " + name + " in the programme");
+        else if (! readRow(steps, bits)) problems.push_back(at + ": " + name + " is not sixteen steps of x and .");
+        else                             p.hits[r].store(bits);
+    }
+}
+
+} // namespace
+
+std::vector<std::string> writeSamplerGrooves(Mz950& s)
+{
+    std::vector<std::string> problems;
+    const auto spans = s.keySpans();
+
+    for (int b = 0; b < banks; ++b)
         for (int n = 0; n < patternsPerBank; ++n)
         {
             const int index = b * patternsPerBank + n;
-            const std::string at = where((char) ('A' + b), index, "Mz950");
-            auto& p = s.track.patterns[index];
-            p.clear();
+            sampler(spans, s.track.patterns[index], banksOfGrooves[b].mz950[n],
+                    where((char) ('A' + b), index, "Mz950"), problems);
+        }
 
-            for (const auto& row : split(banksOfGrooves[b].mz950[n], '|'))
-            {
-                const auto eq = row.find('=');
-                const std::string name = trim(row.substr(0, eq));
-                const std::string steps = eq == std::string::npos ? std::string() : trim(row.substr(eq + 1));
+    return problems;
+}
 
-                const int r = name == "AC" ? NotePattern::accentRow : name == "TIE" ? NotePattern::tieRow : keyOf(name);
-                uint32_t bits = 0;
-                if (r < 0)                       problems.push_back(at + ": no sample " + name + " in the programme");
-                else if (! readRow(steps, bits)) problems.push_back(at + ": " + name + " is not sixteen steps of x and .");
-                else                             p.hits[r].store(bits);
-            }
+//============================================================================== grooves in a key
+
+const char* styleName(int style)
+{
+    static const char* const names[Style::count] = { "ACID", "TECHNO", "ELECTRO", "DEEP" };
+    return names[std::clamp(style, 0, Style::count - 1)];
+}
+
+namespace
+{
+
+int floorDiv(int a, int b) { return a >= 0 ? a / b : -((-a + b - 1) / b); }
+
+// the key's tonic as near C as it can be: -6 to +5 semitones
+int tonicOffset(const Key& k) { return k.root() <= 5 ? k.root() : k.root() - 12; }
+
+// a degree of the key's scale, in any octave, in semitones from its tonic
+int degree(const Key& k, int d)
+{
+    const int octave = floorDiv(d, 7);
+    return k.scale()[d - 7 * octave] + 12 * octave;
+}
+
+// a step so many semitones from its machine's root note, folded into the -12 to +24 a step
+// can reach
+BassStep at(BassStep s, int semitones)
+{
+    while (semitones < -12) semitones += 12;
+    while (semitones > 24) semitones -= 12;
+    s.octave = semitones < 0 ? -1 : (semitones > 12 ? 1 : 0);
+    s.note = semitones - 12 * s.octave;
+    return s;
+}
+
+int semitonesOf(const BassStep& s) { return s.note + 12 * s.octave; }
+
+// a 950 programme that is a kit - mostly keygroups of one key each - rather than a tuned sound
+bool isKit(const std::vector<Mz950::Span>& spans)
+{
+    int single = 0;
+    for (const auto& s : spans) single += s.low == s.high ? 1 : 0;
+    return ! spans.empty() && single * 2 >= (int) spans.size();
+}
+
+//
+// A pitch moved from one key into another, degree for degree; a note between degrees stays
+// a semitone above the one under it. Pitches and tonics are absolute.
+//
+int movePitch(int pitch, int fromTonic, const Key& from, int toTonic, const Key& to)
+{
+    const int rel = pitch - fromTonic;
+    const int octave = floorDiv(rel, 12);
+    const int pc = rel - 12 * octave;
+
+    for (int d = 0; d < 7; ++d)
+        if (from.scale()[d] == pc) return toTonic + 12 * octave + to.scale()[d];
+    for (int d = 0; d < 7; ++d)
+        if (from.scale()[d] == pc - 1) return toTonic + 12 * octave + to.scale()[d] + 1;
+    return toTonic + 12 * octave + pc;
+}
+
+// the shorter way from one tonic to another: -6 to +5 semitones
+int shift(const Key& from, const Key& to)
+{
+    const int d = ((to.root() - from.root()) % 12 + 12) % 12;
+    return d > 5 ? d - 12 : d;
+}
+
+struct Random
+{
+    explicit Random(unsigned seed) : g(seed) {}
+    float uniform() { return std::uniform_real_distribution<float>(0.0f, 1.0f)(g); }
+    bool chance(float p) { return uniform() < p; }
+    int below(int n) { return std::uniform_int_distribution<int>(0, n - 1)(g); }
+    std::mt19937 g;
+};
+
+enum class Role { Groove, Fill, Breakdown };
+
+Role roleOf(int slot) { return slot == 3 || slot == 7 ? Role::Fill : slot == 4 ? Role::Breakdown : Role::Groove; }
+
+// the chord each slot is built on, as a degree: i i VI - i iv VII - in minor, I I IV - I vi V - in major
+int chordOf(const Key& k, int slot)
+{
+    static const int minor[patternsPerBank] = { 0, 0, 5, 0, 0, 3, 6, 0 };
+    static const int major[patternsPerBank] = { 0, 0, 3, 0, 0, 5, 4, 0 };
+    return (k.major ? major : minor)[slot];
+}
+
+// a line: each step's pitch in semitones from the key's tonic, its gate, accent and slide
+struct Line
+{
+    bool gate[stepsPerPattern] {};
+    int pitch[stepsPerPattern] {};
+    bool accent[stepsPerPattern] {};
+    bool slide[stepsPerPattern] {};
+};
+
+void write(BassPattern& p, const Line& l, int tonic)
+{
+    p.clear();
+    for (int s = 0; s < stepsPerPattern; ++s)
+    {
+        BassStep st;
+        st.gate = l.gate[s];
+        st.accent = l.gate[s] && l.accent[s];
+        st.slide = l.gate[s] && l.slide[s] && s + 1 < stepsPerPattern && l.gate[s + 1];
+        p.set(s, l.gate[s] ? at(st, tonic + l.pitch[s]) : st);
+    }
+}
+
+// a chord tone or a passing note above a chord's root, the root most of all
+int chordTone(const Key& k, int chord, Random& r)
+{
+    // degrees above the chord's root, and how often each is picked, out of a hundred
+    static const int steps[]   = { 0, 4, 2, 7, 6, 1, 3 };
+    static const int weights[] = { 50, 14, 10, 10, 8, 4, 4 };
+    int pick = r.below(100);
+    for (int i = 0; i < 7; ++i)
+    {
+        if (pick < weights[i]) return degree(k, chord + steps[i]);
+        pick -= weights[i];
+    }
+    return degree(k, chord);
+}
+
+//
+// A bass line in a style over a chord. Given a line already, it keeps that line's rhythm,
+// so the grooves of a bank sound like one another.
+//
+Line bassLine(const Key& k, int style, int chord, const Line* rhythm, Random& r)
+{
+    static const char* const electro[] = { "x.xx..x.x..x.xx.", "x..x..x...x.x...", "x.x...xx..x..x.." };
+    static const char* const deep[]    = { "x..x..x.x..x.x..", "x.....x...x..x..", "x..x....x.x...x." };
+    static const int rolls[][4]        = { { -12, 0, 0, 12 }, { -12, 0, 12, 0 }, { -12, -12, 0, 12 } };
+
+    const char* tmpl = style == Style::Electro ? electro[r.below(3)] : style == Style::Deep ? deep[r.below(3)] : nullptr;
+    const int* roll = rolls[r.below(3)];
+
+    Line l;
+    for (int s = 0; s < stepsPerPattern; ++s)
+    {
+        if (rhythm != nullptr)            l.gate[s] = rhythm->gate[s];
+        else if (tmpl != nullptr)         l.gate[s] = tmpl[s] == 'x';
+        else if (style == Style::Techno)  l.gate[s] = true;
+        else                              l.gate[s] = s == 0 || r.chance(0.78f);
+
+        if (style == Style::Techno)
+        {
+            // rolling sixteenths, the root jumping octaves, now and then the fifth
+            l.pitch[s] = degree(k, chord + (r.chance(0.15f) ? 4 : 0)) + roll[s % 4];
+            l.accent[s] = s % 4 == 2 && r.chance(0.5f);
+            l.slide[s] = r.chance(0.04f);
+        }
+        else
+        {
+            l.pitch[s] = chordTone(k, chord, r);
+            if (style == Style::Acid)          l.pitch[s] += r.chance(0.2f) ? 12 : (r.chance(0.1f) ? -12 : 0);
+            else if (style == Style::Electro)  l.pitch[s] += r.chance(0.35f) ? -12 : 0;
+            else                               l.pitch[s] -= r.chance(0.5f) ? 12 : 0;
+
+            const float accent = style == Style::Acid ? 0.3f : style == Style::Electro ? 0.2f : 0.05f;
+            const float slide = style == Style::Acid ? 0.25f : style == Style::Electro ? 0.1f : 0.35f;
+            l.accent[s] = r.chance(accent);
+            l.slide[s] = r.chance(slide);
         }
     }
 
-    return problems;
+    // the bar starts on the chord's root
+    l.gate[0] = true;
+    l.pitch[0] = degree(k, chord) - (style == Style::Deep || style == Style::Techno ? 12 : 0);
+    l.accent[0] = style != Style::Deep;
+    return l;
+}
+
+// a line with a few of its notes changed, for a variation that is still the same groove
+Line varied(const Line& l, const Key& k, int chord, Random& r)
+{
+    Line v = l;
+    for (int n = 0; n < 3; ++n)
+    {
+        const int s = 1 + r.below(stepsPerPattern - 1);
+        if (v.gate[s]) v.pitch[s] = chordTone(k, chord, r) + (r.chance(0.25f) ? 12 : 0);
+        v.accent[s] = r.chance(0.3f);
+    }
+    return v;
+}
+
+// a line's second half climbing the scale to the next bar, accented
+Line fill(const Line& l, const Key& k, int chord, bool high)
+{
+    Line f = l;
+    for (int s = 8; s < stepsPerPattern; ++s)
+    {
+        f.gate[s] = true;
+        f.pitch[s] = degree(k, chord + (s - 8)) + (high ? 12 : 0);
+        f.accent[s] = s % 2 == 0;
+        f.slide[s] = s >= 12;
+    }
+    return f;
+}
+
+// a breakdown's line: the root on the bar and half way, then the fifth, and nothing else
+Line sparse(const Key& k, int chord)
+{
+    Line l;
+    l.gate[0] = l.gate[8] = l.gate[14] = true;
+    l.pitch[0] = l.pitch[8] = degree(k, chord) - 12;
+    l.pitch[14] = degree(k, chord + 4) - 12;
+    return l;
+}
+
+//
+// A lead over a chord, in a style: acid answers in a phrase, techno stabs, electro runs an
+// arpeggio, deep drops a dub stab or two for the delay to carry.
+//
+Line leadLine(const Key& k, int style, int chord, Random& r)
+{
+    Line l;
+    auto tone = [&] (int i) { static const int t[] = { 0, 2, 4, 7 }; return degree(k, chord + t[i % 4]) + 12 * (i / 4); };
+
+    switch (style)
+    {
+        case Style::Acid:
+        {
+            static const int spots[] = { 2, 3, 6, 7, 10, 11, 13, 14 };
+            const int notes = 4 + r.below(3);
+            for (int n = 0; n < notes; ++n)
+            {
+                const int s = spots[r.below(8)];
+                l.gate[s] = true;
+                l.pitch[s] = tone(r.below(5));
+                l.slide[s] = r.chance(0.35f);
+            }
+            break;
+        }
+        case Style::Techno:
+        {
+            static const char* const stabs[] = { "x.....x.....x...", "....x.......x...", "..x...x...x.....", "x.......x.....x." };
+            const char* t = stabs[r.below(4)];
+            const int p = tone(r.chance(0.6f) ? 4 : 2);
+            for (int s = 0; s < stepsPerPattern; ++s)
+                if (t[s] == 'x') { l.gate[s] = true; l.pitch[s] = p; }
+            break;
+        }
+        case Style::Electro:
+        {
+            // up, up and down, or a broken order through the chord, over two octaves
+            static const int orders[][8] = { { 0, 1, 2, 3, 4, 3, 2, 1 }, { 0, 1, 2, 3, 2, 1, 0, 1 }, { 0, 2, 1, 3, 2, 4, 3, 1 } };
+            const int* o = orders[r.below(3)];
+            for (int s = 0; s < stepsPerPattern; ++s) { l.gate[s] = true; l.pitch[s] = tone(o[s % 8]) - 12; }
+            break;
+        }
+        default:
+        {
+            static const int spots[] = { 2, 10, 14 };
+            for (int s : spots)
+                if (s != 14 || r.chance(0.5f)) { l.gate[s] = true; l.pitch[s] = tone(1 + r.below(3)); }
+            break;
+        }
+    }
+    return l;
+}
+
+//
+// A drum pattern moved about a little: on half the rows that are not the beat itself, one
+// off-beat sixteenth turned on or off.
+//
+void loosen(DrumPattern& p, int voices, const std::function<bool(int)>& isTheBeat, Random& r)
+{
+    for (int v = 0; v < voices; ++v)
+    {
+        if (isTheBeat(v) || p.rowIsEmpty(v) || ! r.chance(0.5f)) continue;
+        const int s = 1 + 2 * r.below(stepsPerPattern / 2);
+        p.set(v, s, ! p.get(v, s));
+    }
+}
+
+bool isTheBeat(const char* code)
+{
+    const std::string c(code);
+    return c == "BD" || c == "SD" || c == "CP";
+}
+
+} // namespace
+
+Key detectKey(Rack& rack, int bank)
+{
+    double weights[12] {};
+    auto count = [&weights] (Track<BassPattern>& t, int root, int index)
+    {
+        const auto& p = t.patterns[index];
+        for (int s = 0; s < p.len(); ++s)
+        {
+            const BassStep st = p.get(s);
+            if (! st.gate) continue;
+            const int pc = ((root + semitonesOf(st)) % 12 + 12) % 12;
+            weights[pc] += 1.0 + (st.accent ? 0.5 : 0.0) + (s % 4 == 0 ? 1.0 : 0.0);
+        }
+    };
+
+    for (int n = 0; n < patternsPerBank; ++n)
+    {
+        count(rack.mz303.track, rack.mz303.rootNote, bank * patternsPerBank + n);
+        count(rack.mz101.track, rack.mz101.rootNote, bank * patternsPerBank + n);
+    }
+    return likeliestKey(weights);
+}
+
+void transposeBank(Rack& rack, int bank, Key from, Key to)
+{
+    const int d = shift(from, to);
+
+    auto move = [&] (Track<BassPattern>& t, int root)
+    {
+        const int fromTonic = root + tonicOffset(from);
+        for (int n = 0; n < patternsPerBank; ++n)
+        {
+            auto& p = t.patterns[bank * patternsPerBank + n];
+            for (int s = 0; s < stepsPerPattern; ++s)
+            {
+                const BassStep st = p.get(s);
+                if (! st.gate) continue;
+                const int pitch = movePitch(root + semitonesOf(st), fromTonic, from, fromTonic + d, to);
+                p.set(s, at(st, pitch - root));
+            }
+        }
+    };
+    move(rack.mz303.track, rack.mz303.rootNote);
+    move(rack.mz101.track, rack.mz101.rootNote);
+
+    // the 950's notes, if what it plays is tuned: a kit's keys are its sounds, not notes
+    const auto spans = rack.mz950.keySpans();
+    if (! spans.empty() && ! isKit(spans))
+    {
+        const int fromTonic = 60 + tonicOffset(from);
+        for (int n = 0; n < patternsPerBank; ++n)
+        {
+            auto& p = rack.mz950.track.patterns[bank * patternsPerBank + n];
+            uint32_t moved[NotePattern::notes] {};
+            for (int note = 0; note < NotePattern::notes; ++note)
+            {
+                const uint32_t bits = p.hits[note].load();
+                if (bits == 0) continue;
+                const int into = std::clamp(movePitch(note, fromTonic, from, fromTonic + d, to), 0, NotePattern::notes - 1);
+                moved[into] |= bits;
+            }
+            for (int note = 0; note < NotePattern::notes; ++note) p.hits[note].store(moved[note]);
+        }
+    }
+
+    rack.bankKey[bank] = to.index();
+}
+
+void generateBank(Rack& rack, int bank, Key k, int style, unsigned seed)
+{
+    style = std::clamp(style, 0, Style::count - 1);
+    Random r(seed);
+    std::vector<std::string> problems;               // the factory patterns read; the check makes sure
+    const Bank& templates = banksOfGrooves[style];   // each style's drums start from its factory bank
+
+    // the bass line every groove of the bank is built from, and the lead's
+    const Line base = bassLine(k, style, 0, nullptr, r);
+    const Line lead = leadLine(k, style, 0, r);
+
+    const int tonic = tonicOffset(k);   // from each machine's own root note
+    const auto spans = rack.mz950.keySpans();
+    const bool kit = isKit(spans);
+
+    for (int slot = 0; slot < patternsPerBank; ++slot)
+    {
+        const int index = bank * patternsPerBank + slot;
+        const int chord = chordOf(k, slot);
+        const Role role = roleOf(slot);
+        const std::string name = where((char) ('A' + bank), index, "generated");
+
+        // the bass line and the lead
+        Line bass, top;
+        switch (role)
+        {
+            case Role::Groove:
+                bass = slot == 0 ? base
+                     : chord == 0 ? varied(base, k, chord, r)
+                     : varied(bassLine(k, style, chord, &base, r), k, chord, r);
+                top = slot == 0 ? lead
+                    : slot == 1 ? Line {}                                  // the bass on its own
+                    : leadLine(k, style, chord, r);
+                break;
+            case Role::Fill:
+                bass = fill(base, k, chord, false);
+                if (style == Style::Acid || style == Style::Electro)
+                {
+                    top = fill(Line {}, k, chord, true);
+                    for (int s = 0; s < 8; ++s) top.gate[s] = false;
+                }
+                break;
+            case Role::Breakdown:
+                bass = sparse(k, chord);
+                top = leadLine(k, Style::Acid, chord, r);   // the lead, alone with little under it, sings
+                break;
+        }
+        write(rack.mz303.track.patterns[index], bass, tonic);
+        write(rack.mz101.track.patterns[index], top, tonic);
+
+        // the drums: the style's factory pattern in the same slot, moved about in a groove
+        drums(rack.mz808.track, index, tr808::Voice::count, tr808::voiceInfo, templates.mz808[slot], name, problems);
+        drums(rack.mz909.track, index, tr909::Voice::count, tr909::voiceInfo, templates.mz909[slot], name, problems);
+        if (role == Role::Groove)
+        {
+            loosen(rack.mz808.track.patterns[index], tr808::Voice::count,
+                   [] (int v) { return isTheBeat(tr808::voiceInfo(v).code); }, r);
+            loosen(rack.mz909.track.patterns[index], tr909::Voice::count,
+                   [] (int v) { return isTheBeat(tr909::voiceInfo(v).code); }, r);
+        }
+
+        // the 950: a kit plays the style's percussion; a tuned programme the slot's chord
+        auto& p = rack.mz950.track.patterns[index];
+        if (kit)
+        {
+            sampler(spans, p, templates.mz950[slot], name, problems);
+            continue;
+        }
+
+        p.clear();
+        if (spans.empty() || role == Role::Fill) continue;
+
+        // the chord's three notes, round the middle of the keys the programme covers
+        const int middle = (spans.front().low + spans.back().high) / 2;
+        const int home = middle - ((middle - k.root()) % 12 + 12) % 12;
+        int notes[3];
+        for (int i = 0; i < 3; ++i)
+            notes[i] = std::clamp(home + degree(k, chord + 2 * i), 0, NotePattern::notes - 1);
+
+        static const char* const hits[Style::count] = { "..x.......x.....", "..x...x...x...x.", "x..x..x...x.....", "x.......x......." };
+        const char* h = role == Role::Breakdown ? "x..............." : hits[style];
+        const bool held = style == Style::Deep || role == Role::Breakdown;   // a pad, tied on between its hits
+
+        for (int s = 0; s < stepsPerPattern; ++s)
+        {
+            if (h[s] != 'x' && ! held) continue;
+            for (int n : notes) p.set(n, s, true);
+            if (h[s] != 'x') p.set(NotePattern::tieRow, s, true);
+        }
+    }
+
+    rack.bankKey[bank] = k.index();
 }
 
 } // namespace debirth
