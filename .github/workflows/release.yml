@@ -83,8 +83,10 @@ jobs:
           $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = "application/vnd.github+json" }
           $api = "https://api.github.com/repos/$env:GITHUB_REPOSITORY"
 
-          $release = Invoke-RestMethod "$api/releases?per_page=100" -Headers $headers |
-                     Where-Object { $_.tag_name -eq $env:TAG } |
+          # Into a variable first: piped straight on, Invoke-RestMethod hands the whole list down
+          # as one object, and the filter lets every release through.
+          $all = Invoke-RestMethod "$api/releases?per_page=100" -Headers $headers
+          $release = $all | Where-Object { $_.tag_name -eq $env:TAG } |
                      Sort-Object { $_.draft } | Select-Object -First 1
 
           if (-not $release) {
