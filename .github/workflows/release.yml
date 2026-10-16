@@ -68,18 +68,40 @@ jobs:
       - name: Build, check and package
         run: ./build.ps1 -Release
 
+      #
+      # The release for the tag is found by listing them all, drafts too: looked up by its tag,
+      # GitHub does not return a draft, so a release drafted on the website before the tag was
+      # pushed went unseen, and a second draft was made beside it with the files on - leaving
+      # the one that was then published with none. A published release is preferred over a
+      # draft. Files already there of the same name are replaced.
+      #
       - name: Attach to the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $files = "win64-Setup.exe", "win64.zip" | ForEach-Object { "dist/MzDebirth-$env:VERSION-$_" }
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = "application/vnd.github+json" }
+          $api = "https://api.github.com/repos/$env:GITHUB_REPOSITORY"
 
-          gh release view $env:TAG *> $null
-          if ($LASTEXITCODE -eq 0) {
-              gh release upload $env:TAG @files --clobber
-          } else {
+          $release = Invoke-RestMethod "$api/releases?per_page=100" -Headers $headers |
+                     Where-Object { $_.tag_name -eq $env:TAG } |
+                     Sort-Object { $_.draft } | Select-Object -First 1
+
+          if (-not $release) {
               $notes = "docs/releases/$env:TAG.md"
               if (Test-Path $notes) { $from = @("--notes-file", $notes) } else { $from = @("--generate-notes") }
               gh release create $env:TAG @files --draft --title "MzDebirth $env:VERSION" @from
+              if ($LASTEXITCODE -ne 0) { throw "could not make a release for $env:TAG" }
+              exit 0
           }
-          if ($LASTEXITCODE -ne 0) { throw "could not attach the files to $env:TAG" }
+
+          Write-Host "attaching to release $($release.id): $($release.name)$(if ($release.draft) { ' (draft)' })"
+          foreach ($file in $files) {
+              $name = Split-Path $file -Leaf
+              foreach ($old in $release.assets | Where-Object { $_.name -eq $name }) {
+                  Invoke-RestMethod -Method Delete "$api/releases/assets/$($old.id)" -Headers $headers
+              }
+              Invoke-RestMethod -Method Post -Headers $headers -ContentType "application/octet-stream" -InFile $file `
+                  -Uri "https://uploads.github.com/repos/$env:GITHUB_REPOSITORY/releases/$($release.id)/assets?name=$name" | Out-Null
+              Write-Host "  $name"
+          }
