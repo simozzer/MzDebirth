@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <fstream>
 #include <random>
 #include <string>
 #include <vector>
@@ -30,6 +31,12 @@ void check(bool ok, const char* what, const std::string& detail = {})
 {
     std::printf("%s  %-62s %s\n", ok ? "ok  " : "FAIL", what, detail.c_str());
     if (! ok) ++failures;
+}
+
+// A check that cannot run here, said so rather than passed over in silence.
+void skip(const char* what)
+{
+    std::printf("skip  %s\n", what);
 }
 
 template <class... A>
@@ -311,6 +318,11 @@ void others()
 #ifdef MZ950_DISKS
     std::string error;
     const std::string disk = std::string(MZ950_DISKS) + "/DRUMS.hfe";
+    if (! std::ifstream(disk).good())
+    {
+        skip("the 950's checks: no drum disk - make Mz950's with AkaiS950Synth\\build.ps1 -To disks");
+        return;
+    }
     if (! r.mz950.loadDisk(disk, error))
     {
         check(false, "the 950 loads a disk", error);
@@ -500,6 +512,10 @@ void grooves()
     {
         const auto sampler = writeSamplerGrooves(r.mz950);
         check(sampler.empty(), "and the 950's find their sounds on the drum disk", sampler.empty() ? std::string() : sampler.front());
+    }
+    else
+    {
+        skip("the 950's grooves: no drum disk");
     }
 #endif
 

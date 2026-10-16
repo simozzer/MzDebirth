@@ -35,7 +35,7 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ env.TAG }}
 
@@ -46,6 +46,14 @@ jobs:
               git clone --depth 1 "https://github.com/simozzer/$synth" "../$synth"
               if ($LASTEXITCODE -ne 0) { throw "could not clone $synth" }
           }
+
+      # Mz950's sample disks are not in its repository - *.hfe is ignored there - but made
+      # by its disk generator, as its own release makes them. The check plays the drum disk,
+      # and the installer ships all six.
+      - name: Mz950's disks
+        run: |
+          ../Mz950/AkaiS950Synth/build.ps1 -To ../Mz950/disks
+          if (-not (Test-Path ../Mz950/disks/DRUMS.hfe)) { throw "the disk generator wrote no DRUMS.hfe" }
 
       - name: The tag matches the version in CMakeLists.txt
         run: |
