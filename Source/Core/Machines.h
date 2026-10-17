@@ -119,6 +119,42 @@ public:
         if (! tied) release();
     }
 
+    //
+    // Played from the song, a note at a time rather than a step. A note that starts before
+    // the one sounding has ended slides into it, as a slid step does: struck over it, then
+    // the old one let go - or, on the same note, just held on. Velocity 110 and up is an
+    // accent.
+    //
+    static constexpr int accentVelocity = 110;
+
+    void songNoteOn(int note, int velocity, bool slide)
+    {
+        const bool accent = velocity >= accentVelocity;
+
+        if (slide && held >= 0)
+        {
+            if (note != held)
+            {
+                voice.noteOn(note, accent);
+                voice.noteOff(held);
+            }
+        }
+        else
+        {
+            release();
+            voice.noteOn(note, accent);
+        }
+
+        held = note;
+        tied = false;
+    }
+
+    // a note ending lets go only if it is still the one sounding
+    void songNoteOff(int note)
+    {
+        if (note == held) release();
+    }
+
     const decltype(Voice::engine)& view() const { return voice.engine; }
 
 private:
@@ -168,6 +204,14 @@ public:
 
         for (int v = 0; v < voices; ++v)
             if (p.get(v, i)) engine.trigger(v, accented);
+    }
+
+    // Played from the song: one instrument, accented at velocity 110 and up.
+    static constexpr int accentVelocity = 110;
+
+    void hit(int voice, int velocity)
+    {
+        if (voice >= 0 && voice < voices) engine.trigger(voice, velocity >= accentVelocity);
     }
 
     const Engine& view() const { return engine; }

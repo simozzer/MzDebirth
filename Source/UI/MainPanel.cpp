@@ -11,6 +11,7 @@ namespace
 {
     constexpr int transportHeight = 64;
     constexpr int effectsHeight = 92;
+    constexpr int tabHeight = 26;
     const char* const fileSuffix = ".mzdebirth";
 }
 
@@ -301,7 +302,7 @@ void RackView::paint(juce::Graphics& g)
 //============================================================================== MainPanel
 
 MainPanel::MainPanel(DebirthProcessor& p)
-    : processor(p), transport(p), effects(p.rack), rack(p)
+    : processor(p), transport(p), effects(p.rack), rack(p), arrangeView(p)
 {
     setLookAndFeel(&look);
     setWantsKeyboardFocus(true);
@@ -331,8 +332,39 @@ MainPanel::MainPanel(DebirthProcessor& p)
     viewport.getVerticalScrollBar().setColour(juce::ScrollBar::thumbColourId, colours::screw.withAlpha(0.7f));
     viewport.setSingleStepSizes(40, 40);
     addAndMakeVisible(viewport);
+    addChildComponent(arrangeView);
+
+    rackTab.setTooltip("The rack: the machines' panels, their patterns and the mixer (F1).");
+    arrangeTab.setTooltip("The Arrange window: the song, its tracks and parts, as Cubase laid them out (F2).");
+    rackTab.onPress = [this] { showView((int) DebirthProcessor::View::Rack); };
+    arrangeTab.onPress = [this] { showView((int) DebirthProcessor::View::Arrange); };
+    songMode.setTooltip("SONG MODE: the arrangement plays the machines. Off, as in ReBirth's PATTERN mode, "
+                        "they play their patterns. Changed while playing, it waits for the bar.");
+    songMode.onPress = [this]
+    {
+        auto& mode = processor.rack.mode;
+        mode = mode.load() == Mode::Song ? Mode::Pattern : Mode::Song;
+    };
+    for (auto* t : { &rackTab, &arrangeTab, &songMode })
+    {
+        t->setLedColour(colours::ledGreen);
+        addAndMakeVisible(*t);
+    }
+    showView((int) processor.view);
 
     startTimerHz(30);
+}
+
+void MainPanel::showView(int v)
+{
+    const auto view = (DebirthProcessor::View) v;
+    processor.view = view;
+    const bool arranging = view == DebirthProcessor::View::Arrange;
+    viewport.setVisible(! arranging);
+    arrangeView.setVisible(arranging);
+    rackTab.setLit(! arranging);
+    arrangeTab.setLit(arranging);
+    if (isShowing()) grabKeyboardFocus();
 }
 
 MainPanel::~MainPanel()
@@ -351,7 +383,15 @@ void MainPanel::timerCallback()
     const bool blinkPhase = (++ticks / 8) % 2 == 0;
     transport.tick();
     effects.tick();
-    rack.tick(blinkPhase);
+
+    // SONG MODE: lit when on; blinking while a change waits for the bar
+    const bool playing = processor.rack.playing.load();
+    const bool wanted = processor.rack.mode.load() == Mode::Song;
+    const bool waiting = playing && wanted != (processor.rack.playingNow() == Mode::Song);
+    songMode.setLit(waiting ? blinkPhase : wanted);
+
+    if (arrangeView.isVisible()) arrangeView.tick();
+    else                         rack.tick(blinkPhase);
 }
 
 void MainPanel::refresh()
@@ -359,6 +399,8 @@ void MainPanel::refresh()
     transport.refresh();
     effects.refresh();
     rack.refresh();
+    arrangeView.refresh();
+    showView((int) processor.view);
 }
 
 bool MainPanel::keyPressed(const juce::KeyPress& k)
@@ -368,7 +410,10 @@ bool MainPanel::keyPressed(const juce::KeyPress& k)
         processor.rack.playing = ! processor.rack.playing.load();
         return true;
     }
-    return false;
+    if (k == juce::KeyPress::F1Key) { showView((int) DebirthProcessor::View::Rack); return true; }
+    if (k == juce::KeyPress::F2Key) { showView((int) DebirthProcessor::View::Arrange); return true; }
+
+    return arrangeView.isVisible() && arrangeView.handleKey(k);
 }
 
 static juce::File racksFolder()
@@ -423,9 +468,18 @@ void MainPanel::resized()
     transport.setBounds(r.removeFromTop(transportHeight));
     r.removeFromTop(gap);
     effects.setBounds(r.removeFromTop(effectsHeight));
+    r.removeFromTop(gap);
+
+    auto tabs = r.removeFromTop(tabHeight);
+    rackTab.setBounds(tabs.removeFromLeft(110));
+    tabs.removeFromLeft(4);
+    arrangeTab.setBounds(tabs.removeFromLeft(110));
+    songMode.setBounds(tabs.removeFromRight(120));
+    r.removeFromTop(gap);
 
     viewport.setBounds(r);
     rack.setSize(r.getWidth() - viewport.getScrollBarThickness() - 4, rack.preferredHeight());
+    arrangeView.setBounds(r.withTrimmedBottom(gap));
 }
 
 void MainPanel::paint(juce::Graphics& g)

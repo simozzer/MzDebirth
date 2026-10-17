@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(MzDebirth VERSION 0.3.0 LANGUAGES C CXX)
+project(MzDebirth VERSION 0.4.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -63,6 +63,7 @@ set(CORE_SOURCES
     Source/Core/Key.cpp
     Source/Core/Rack.cpp
     Source/Core/Sampler.cpp
+    Source/Core/Song.cpp
     "${MZ101_PATH}/Source/SH101/Engine.cpp"
     "${MZ303_PATH}/Source/TB303/Engine.cpp"
     "${MZ808_PATH}/Source/TR808/Engine.cpp"
@@ -120,6 +121,13 @@ target_sources(MzDebirth PRIVATE
     Source/UI/KeyPanel.cpp
     Source/UI/SamplerRack.cpp
     Source/UI/MainPanel.cpp
+    Source/UI/Arrange/ArrangeState.cpp
+    Source/UI/Arrange/ArrangeTransport.cpp
+    Source/UI/Arrange/ArrangeView.cpp
+    Source/UI/Arrange/PartEditor.cpp
+    Source/UI/Arrange/PartLane.cpp
+    Source/UI/Arrange/Ruler.cpp
+    Source/UI/Arrange/TrackList.cpp
     ${CORE_SOURCES})
 
 target_include_directories(MzDebirth PRIVATE ${CORE_INCLUDES})

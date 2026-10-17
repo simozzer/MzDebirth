@@ -193,16 +193,165 @@ void Rack::prepare(double sampleRate, int maxBlock)
     masterComp.prepare(sampleRate);
 }
 
+Rack::~Rack()
+{
+    delete playback;
+    delete pending.exchange(nullptr);
+    delete retired.exchange(nullptr);
+}
+
 void Rack::render(float* left, float* right, int n)
 {
     while (n > 0)
     {
-        const int chunk = n < blockSize ? n : blockSize;
+        const int chunk = beginBlock(n < blockSize ? n : blockSize);
         renderBlock(left, right, chunk);
+        endBlock();
         left += chunk;
         right += chunk;
         n -= chunk;
     }
+}
+
+//============================================================================== the song
+
+void Rack::publish(std::unique_ptr<Playback> p)
+{
+    delete pending.exchange(p.release());   // one the audio thread never took is just replaced
+}
+
+void Rack::collect()
+{
+    delete retired.exchange(nullptr);
+}
+
+void Rack::dispatch(const SongPlayer::Due& d)
+{
+    const bool on = d.kind == SongPlayer::Kind::On;
+    switch (d.machine)
+    {
+        case M303: if (on) mz303.songNoteOn(d.key, d.velocity, d.slide); else mz303.songNoteOff(d.key); break;
+        case M101: if (on) mz101.songNoteOn(d.key, d.velocity, d.slide); else mz101.songNoteOff(d.key); break;
+        case M808: if (on) mz808.hit(d.key, d.velocity); break;
+        case M909: if (on) mz909.hit(d.key, d.velocity); break;
+        case M950: if (on) mz950.songNoteOn(d.key, d.velocity); else mz950.songNoteOff(d.key); break;
+        default: break;
+    }
+}
+
+void Rack::startMachines()
+{
+    mz303.start(); mz101.start(); mz808.start(); mz909.start(); mz950.start();
+}
+
+void Rack::stopMachines()
+{
+    mz303.stop(); mz101.stop(); mz808.stop(); mz909.stop(); mz950.stop();
+    player.forget();
+}
+
+//
+// Before each block: the transport, a new song from the panel, a jump of the cursor, a
+// change of mode - and how much to render, so that the block ends exactly where the cycle
+// goes round, or on the bar a change of mode waits for.
+//
+int Rack::beginBlock(int n)
+{
+    // a new song, if the last one handed back has been collected
+    if (retired.load() == nullptr)
+        if (Playback* p = pending.exchange(nullptr))
+        {
+            retired.store(playback);
+            playback = p;
+            player.setPlayback(p);
+        }
+
+    clock.setTempo(tempo.load());
+    clock.setShuffle(shuffle.load());
+
+    // the transport, as the panel last left it
+    const bool wanted = playing.load();
+    if (wanted != clock.isRunning())
+    {
+        if (wanted)
+        {
+            playingMode = mode.load();
+            const bool fromCursor = playingMode == Mode::Song && playback != nullptr;
+            clock.start(fromCursor ? (double) playback->cursor / ticksPerStep : 0.0);
+            startMachines();   // in SONG mode their patterns rest, but they start as they would
+            player.forget();
+        }
+        else
+        {
+            clock.stop();
+            stopMachines();
+        }
+    }
+
+    if (! clock.isRunning())
+    {
+        playingMode = mode.load();
+        modeNow = playingMode;
+        songTick = -1;
+        locateTo = -1;
+        return n;
+    }
+
+    const double perStep = clock.samplesPerStep();
+    auto samplesTo = [&] (double step) { return (int) std::ceil((step - clock.position()) * perStep - 1.0e-6); };
+
+    // the song's cursor moved while it plays
+    if (const int to = locateTo.exchange(-1); to >= 0 && playingMode == Mode::Song)
+    {
+        clock.locate((double) to / ticksPerStep);
+        player.releaseAll([this] (int, const SongPlayer::Due& d) { dispatch(d); });
+    }
+
+    // A change of mode waits for the bar, as a new pattern does.
+    const int wantedMode = mode.load();
+    if (wantedMode != playingMode)
+    {
+        const int64_t bar = (clock.nextStep() + 15) / 16 * 16;
+        const int toBar = samplesTo((double) bar);
+        if (toBar <= 0)
+        {
+            playingMode = wantedMode;
+            stopMachines();
+            if (playingMode == Mode::Pattern) startMachines();
+        }
+        else if (toBar < n)
+        {
+            n = toBar;
+        }
+    }
+    modeNow = playingMode;
+
+    if (playingMode == Mode::Song && playback != nullptr && playback->cycle)
+    {
+        const int toEnd = samplesTo((double) playback->right / ticksPerStep);
+        if (toEnd > 0 && toEnd < n) n = toEnd;
+    }
+
+    return n;
+}
+
+void Rack::endBlock()
+{
+    if (! clock.isRunning() || playingMode != Mode::Song)
+    {
+        songTick = -1;
+        return;
+    }
+
+    // round the cycle: back to the left locator, and whatever was sounding let go
+    if (playback != nullptr && playback->cycle
+        && clock.position() >= (double) playback->right / ticksPerStep - 1.0e-6)
+    {
+        clock.locate((double) playback->left / ticksPerStep);
+        player.releaseAll([this] (int, const SongPlayer::Due& d) { dispatch(d); });
+    }
+
+    songTick = clock.position() * ticksPerStep;
 }
 
 void Rack::renderMachines(int from, int to)
@@ -219,26 +368,8 @@ void Rack::renderMachines(int from, int to)
 
 void Rack::renderBlock(float* left, float* right, int n)
 {
-    // the transport, as the panel last left it
-    const bool wanted = playing.load();
-    if (wanted != clock.isRunning())
-    {
-        if (wanted)
-        {
-            clock.start();
-            mz303.start(); mz101.start(); mz808.start(); mz909.start(); mz950.start();
-        }
-        else
-        {
-            clock.stop();
-            mz303.stop(); mz101.stop(); mz808.stop(); mz909.stop(); mz950.stop();
-        }
-    }
-
-    clock.setTempo(tempo.load());
-    clock.setShuffle(shuffle.load());
-
     const bool running = clock.isRunning();
+    const bool song = running && playingMode == Mode::Song;
     const double quarters = clock.quarters(), bpm = clock.getTempo();
     mz303.update(running, quarters, bpm);
     mz101.update(running, quarters, bpm);
@@ -254,25 +385,68 @@ void Rack::renderBlock(float* left, float* right, int n)
     // is struck on every straight sixteenth while playing, at its pattern's level for the step.
     strikeCount = 0;
     int pos = 0;
-    clock.advance(n, [&] (int at, int l, Clock::Event e, int64_t step)
+
+    auto strike = [this] (int at, int l, Clock::Event e, int64_t step)
     {
-        renderMachines(pos, at);
-        pos = at > pos ? at : pos;
-
-        const bool isStep = e == Clock::Event::Step;
-        if (l == lane[M303]) { if (isStep) mz303.step(); else mz303.gateOff(); }
-        if (l == lane[M101]) { if (isStep) mz101.step(); else mz101.gateOff(); }
-        if (l == lane[M808] && isStep) mz808.step();
-        if (l == lane[M909] && isStep) mz909.step();
-        if (l == lane[M950]) { if (isStep) mz950.step(); else mz950.gateOff(); }
-
-        if (l == 0 && isStep && strikeCount < (int) (sizeof strikes / sizeof strikes[0]))
+        if (l == 0 && e == Clock::Event::Step && strikeCount < (int) (sizeof strikes / sizeof strikes[0]))
         {
             const int s = (int) (step % 16);
             strikes[strikeCount++] = { at, pcf::level((int) fx.get(fx.indexOf("pcfPattern")), s) };
             pcfPosition = s;
         }
-    });
+    };
+
+    if (! song)
+    {
+        clock.advance(n, [&] (int at, int l, Clock::Event e, int64_t step)
+        {
+            renderMachines(pos, at);
+            pos = at > pos ? at : pos;
+
+            const bool isStep = e == Clock::Event::Step;
+            if (l == lane[M303]) { if (isStep) mz303.step(); else mz303.gateOff(); }
+            if (l == lane[M101]) { if (isStep) mz101.step(); else mz101.gateOff(); }
+            if (l == lane[M808] && isStep) mz808.step();
+            if (l == lane[M909] && isStep) mz909.step();
+            if (l == lane[M950]) { if (isStep) mz950.step(); else mz950.gateOff(); }
+
+            strike(at, l, e, step);
+        });
+    }
+    else
+    {
+        // In SONG mode the song's notes play the machines, and the clock's steps only strike
+        // the PCF. The machines are still rendered up to each of the clock's events as well
+        // as the song's, so they are cut into the same pieces either way and a pattern made
+        // into a part sounds exactly as the pattern does.
+        int dueCount = 0;
+        player.advance(clock.position(), n, clock.samplesPerStep(), clock.getShuffle(),
+                       [&] (int at, const SongPlayer::Due& d)
+        {
+            if (dueCount < maxSongDue) songDue[dueCount++] = { at, d };
+        });
+
+        int next = 0;
+        clock.advance(n, [&] (int at, int l, Clock::Event e, int64_t step)
+        {
+            for (; next < dueCount && songDue[next].at <= at; ++next)
+            {
+                renderMachines(pos, songDue[next].at);
+                pos = std::max(pos, songDue[next].at);
+                dispatch(songDue[next].due);
+            }
+            renderMachines(pos, at);
+            pos = at > pos ? at : pos;
+            strike(at, l, e, step);
+        });
+
+        for (; next < dueCount; ++next)
+        {
+            renderMachines(pos, songDue[next].at);
+            pos = std::max(pos, songDue[next].at);
+            dispatch(songDue[next].due);
+        }
+    }
     renderMachines(pos, n);
     if (! running) pcfPosition = -1;
 

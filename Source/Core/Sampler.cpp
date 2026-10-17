@@ -159,8 +159,22 @@ void Mz950::releaseAll()
 {
     if (engine != nullptr)
         for (int k = 0; k < NotePattern::notes; ++k)
-            if (held[k]) engine->noteOff(k);
+            if (held[k] || songHeld[k] > 0) engine->noteOff(k);
     std::fill(std::begin(held), std::end(held), false);
+    std::fill(std::begin(songHeld), std::end(songHeld), (uint8_t) 0);
+}
+
+void Mz950::songNoteOn(int key, int vel)
+{
+    if (engine == nullptr || key < 0 || key >= NotePattern::notes) return;
+    engine->noteOn(key, vel);
+    if (songHeld[key] < 255) ++songHeld[key];
+}
+
+void Mz950::songNoteOff(int key)
+{
+    if (engine == nullptr || key < 0 || key >= NotePattern::notes || songHeld[key] == 0) return;
+    if (--songHeld[key] == 0) engine->noteOff(key);
 }
 
 void Mz950::start()

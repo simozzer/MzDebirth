@@ -35,17 +35,32 @@ public:
 
     double samplesPerStep() const   { return rate * 15.0 / tempo; }
     double getTempo() const         { return tempo; }
+    double getShuffle() const       { return shuffle; }
     double getRate() const          { return rate; }
 
     // where the next block starts, in quarter notes from PLAY - for the synced LFOs
     double quarters() const         { return phase / 4.0; }
 
-    void start()
+    // From PLAY, or in SONG mode from wherever the song's cursor is, in steps.
+    void start(double fromStep = 0)
     {
-        phase = 0;
-        for (auto& l : lanes) l = Lane {};
+        locate(fromStep);
         running = true;
     }
+
+    // Jumps to a step - the song's cycle going round, or its cursor moved while playing. A
+    // gate waiting to close is forgotten: whatever was sounding is let go by the caller.
+    void locate(double step)
+    {
+        phase = step;
+        for (auto& l : lanes) l = Lane { (int64_t) std::ceil(step - 1.0e-9), 0, false };
+    }
+
+    // where the next block starts, in steps from the top of the song (or from PLAY)
+    double position() const { return phase; }
+
+    // the next straight step to begin
+    int64_t nextStep() const { return lanes[0].next; }
 
     void stop()            { running = false; }
     bool isRunning() const { return running; }

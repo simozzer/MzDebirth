@@ -634,8 +634,274 @@ void keys()
     check(same, "the same seed writes the same bank");
 }
 
+//============================================================================== the song
+
+namespace
+{
+    void publish(Rack& r, const Song& s) { r.publish(std::make_unique<Playback>(compile(s))); }
+
+    Note note(int tick, int length, int pitch, int velocity = 100)
+    {
+        Note n;
+        n.tick = tick; n.length = length; n.pitch = pitch; n.velocity = velocity;
+        return n;
+    }
+
+    Part part(int start, int length, std::vector<Note> notes)
+    {
+        Part p;
+        p.start = start; p.length = length; p.notes = std::move(notes);
+        return p;
+    }
+
+    const int bd808 = tr808::voiceInfo(tr808::Voice::BD).note;
+    const int ch808 = tr808::voiceInfo(tr808::Voice::CH).note;
+}
+
+void song()
+{
+    std::printf("\nthe song\n");
+
+    // 125 bpm at 48 kHz: 5760 samples a step, 92160 a bar; blocks of 480, twelve a step
+    auto rack = [] (Rack& r)
+    {
+        r.prepare(48000, 480);
+        r.tempo = 125;
+        r.mode = Mode::Song;
+    };
+
+    // a note lands on its sample
+    {
+        Rack r;
+        rack(r);
+        Song s = defaultSong();
+        s.tracks[Rack::M808].parts.push_back(part(0, ticksPerBar, { note(2 * ticksPerStep, 24, bd808) }));
+        publish(r, s);
+        r.playing = true;
+
+        uint32_t before = 0, after = 0;
+        play(r, 25, 480, [&] (int k, auto&, auto&)
+        {
+            if (k == 23) before = r.mz808.view().hitCount(tr808::Voice::BD);
+            if (k == 24) after = r.mz808.view().hitCount(tr808::Voice::BD);
+        });
+        check(before == 0 && after == 1, "a song's note lands on its sample", fmt("before %u, after %u", before, after));
+    }
+
+    // PLAY starts from the cursor
+    {
+        Rack r;
+        rack(r);
+        Song s = defaultSong();
+        s.cursor = ticksPerBar;
+        s.tracks[Rack::M808].parts.push_back(part(0, 2 * ticksPerBar, { note(0, 24, bd808), note(ticksPerBar, 24, ch808) }));
+        publish(r, s);
+        r.playing = true;
+        play(r, 1, 480, [] (int, auto&, auto&) {});
+        check(r.mz808.view().hitCount(tr808::Voice::CH) == 1 && r.mz808.view().hitCount(tr808::Voice::BD) == 0,
+              "PLAY starts from the cursor", fmt("at tick %.0f", r.songPosition()));
+    }
+
+    // Every factory groove, made into parts and played as a song, sounds as its patterns do:
+    // the same notes on the same samples, slides, accents and shuffle and all.
+    {
+        double worst = 0;
+        int worstGroove = -1;
+        constexpr int steps = 32;
+
+        for (int g = 0; g < patternsPerTrack; ++g)
+        {
+            Rack a, b;
+            for (Rack* r : { &a, &b })
+            {
+                r->prepare(48000, 480);
+                writeGrooves(*r);
+                r->shuffle = 0.6f;
+                for (int m = 0; m < Rack::channels; ++m) r->track(m).selected = g;
+            }
+            a.mode = Mode::Pattern;
+            b.mode = Mode::Song;
+
+            Song s = defaultSong();
+            for (int m : { Rack::M303, Rack::M101, Rack::M808, Rack::M909 })
+            {
+                const int len = b.track(m).pattern(g).len();
+                s.tracks[(size_t) m].parts.push_back(partFromPattern(b, m, g, steps / len + 2));
+                s.tracks[(size_t) m].shuffle = b.track(m).shuffle.load();
+            }
+            publish(b, s);
+
+            a.playing = true;
+            b.playing = true;
+            const int blocks = (int) std::lround(steps * 48000.0 * 15.0 / a.tempo.load() / 480.0);
+            std::vector<float> al(480), ar(480), bl(480), br(480);
+            double diff = 0;
+            for (int k = 0; k < blocks; ++k)
+            {
+                a.render(al.data(), ar.data(), 480);
+                b.render(bl.data(), br.data(), 480);
+                for (int i = 0; i < 480; ++i)
+                    diff = std::max(diff, (double) std::max(std::fabs(al[(size_t) i] - bl[(size_t) i]),
+                                                            std::fabs(ar[(size_t) i] - br[(size_t) i])));
+            }
+            if (diff > worst) { worst = diff; worstGroove = g; }
+        }
+        check(worst < 1.0e-5, "every factory groove as a song sounds as its patterns",
+              worstGroove < 0 ? "identical" : fmt("worst %.2g, on %c%d", worst, 'A' + worstGroove / 8, worstGroove % 8 + 1));
+    }
+
+    // and the 950's, its ties and chords and all, on the drum disk
+#ifdef MZ950_DISKS
+    {
+        double worst = 0;
+        bool loaded = true;
+        constexpr int steps = 32;
+
+        for (int g = 0; g < patternsPerBank && loaded; ++g)
+        {
+            Rack a, b;
+            for (Rack* r : { &a, &b })
+            {
+                std::string error;
+                loaded &= r->mz950.loadDisk(std::string(MZ950_DISKS) + "/DRUMS.hfe", error);
+                r->prepare(48000, 480);
+                writeGrooves(*r);
+                writeSamplerGrooves(r->mz950);
+                r->mz950.service();
+                r->shuffle = 0.6f;
+                for (int m = 0; m < Rack::channels; ++m)
+                {
+                    r->track(m).selected = g;
+                    r->channel[m].mute = m != Rack::M950;
+                }
+            }
+            a.mode = Mode::Pattern;
+            b.mode = Mode::Song;
+
+            Song s = defaultSong();
+            const int len = b.track(Rack::M950).pattern(g).len();
+            s.tracks[Rack::M950].parts.push_back(partFromPattern(b, Rack::M950, g, steps / len + 2));
+            s.tracks[Rack::M950].shuffle = b.track(Rack::M950).shuffle.load();
+            publish(b, s);
+
+            a.playing = b.playing = true;
+            std::vector<float> al(480), ar(480), bl(480), br(480);
+            const int blocks = (int) std::lround(steps * 48000.0 * 15.0 / a.tempo.load() / 480.0);
+            for (int k = 0; k < blocks; ++k)
+            {
+                a.render(al.data(), ar.data(), 480);
+                b.render(bl.data(), br.data(), 480);
+                for (int i = 0; i < 480; ++i)
+                    worst = std::max(worst, (double) std::max(std::fabs(al[(size_t) i] - bl[(size_t) i]),
+                                                              std::fabs(ar[(size_t) i] - br[(size_t) i])));
+            }
+        }
+        if (loaded) check(worst < 1.0e-5, "and the 950's, ties and all", fmt("worst %.2g", worst));
+        else        skip("the 950's grooves as a song: no drum disk");
+    }
+#endif
+
+    // the cycle goes round, and lets go of what was sounding
+    {
+        Rack r;
+        rack(r);
+        Song s = defaultSong();
+        s.left = 0;
+        s.right = ticksPerBar;
+        s.cycle = true;
+        s.tracks[Rack::M808].parts.push_back(part(0, ticksPerBar, { note(0, 24, bd808) }));
+        s.tracks[Rack::M303].parts.push_back(part(0, 2 * ticksPerBar, { note(ticksPerBar / 2, ticksPerBar, 36) }));
+        publish(r, s);
+        r.playing = true;
+
+        bool gateAfterJump = true, gateMidBar = false;
+        const int bar = 16 * 12;   // blocks
+        play(r, bar * 3 + bar / 2, 480, [&] (int k, auto&, auto&)
+        {
+            if (k == bar + 1) gateAfterJump = r.mz303.view().gateIsOn();
+            if (k == bar + bar * 3 / 4) gateMidBar = r.mz303.view().gateIsOn();
+        });
+        check(r.mz808.view().hitCount(tr808::Voice::BD) == 4, "the cycle goes round, three and a half times",
+              fmt("%u kicks", r.mz808.view().hitCount(tr808::Voice::BD)));
+        check(! gateAfterJump && gateMidBar, "and lets go of a note held over its end");
+        check(r.songPosition() >= 0 && r.songPosition() < ticksPerBar, "and stays inside the locators",
+              fmt("at tick %.0f", r.songPosition()));
+    }
+
+    // a new song swapped in while it plays drops no note and strikes none twice; a note
+    // edited away while it sounds still ends
+    {
+        Rack r;
+        rack(r);
+        Song s = defaultSong();
+        std::vector<Note> hats;
+        for (int i = 0; i < 32; ++i) hats.push_back(note(i * ticksPerStep, 24, ch808));
+        s.tracks[Rack::M808].parts.push_back(part(0, 2 * ticksPerBar, hats));
+        s.tracks[Rack::M303].parts.push_back(part(0, 2 * ticksPerBar, { note(0, ticksPerBar, 40) }));
+        publish(r, s);
+        r.playing = true;
+
+        Song edited = s;
+        edited.tracks[Rack::M303].parts.clear();
+        bool heldOn = false, letGo = false;
+        play(r, 2 * 16 * 12, 480, [&] (int k, auto&, auto&)
+        {
+            r.collect();
+            if (k % 7 == 3) publish(r, k > 48 ? edited : s);
+            if (k == 100) heldOn = r.mz303.view().gateIsOn();
+            if (k == 16 * 12 + 2) letGo = ! r.mz303.view().gateIsOn();
+        });
+        check(r.mz808.view().hitCount(tr808::Voice::CH) == 32, "a song swapped in while playing drops and doubles nothing",
+              fmt("%u of 32 hats", r.mz808.view().hitCount(tr808::Voice::CH)));
+        check(heldOn && letGo, "a note edited away while it sounds still ends");
+
+        r.playing = false;
+        play(r, 1, 480, [] (int, auto&, auto&) {});
+        Song held = defaultSong();
+        held.tracks[Rack::M303].parts.push_back(part(0, 4 * ticksPerBar, { note(0, 4 * ticksPerBar, 40) }));
+        r.collect();
+        publish(r, held);
+        r.playing = true;
+        play(r, 10, 480, [&] (int, auto&, auto&) { r.collect(); });
+        const bool sounding = r.mz303.view().gateIsOn();
+        r.playing = false;
+        play(r, 1, 480, [] (int, auto&, auto&) {});
+        check(sounding && ! r.mz303.view().gateIsOn(), "STOP lets go of the song's notes");
+    }
+
+    // a change of mode waits for the bar
+    {
+        Rack r;
+        rack(r);
+        r.mode = Mode::Pattern;
+        publish(r, defaultSong());
+        r.playing = true;
+        play(r, 12 * 5, 480, [] (int, auto&, auto&) {});
+        r.mode = Mode::Song;
+        int switchedAt = -1;
+        play(r, 12 * 16, 480, [&] (int k, auto&, auto&) { if (switchedAt < 0 && r.playingNow() == Mode::Song) switchedAt = k; });
+        // five steps were played; the bar is eleven steps (132 blocks) on: the block that starts it
+        check(switchedAt == 132, "SONG mode, picked mid-bar, starts on the next", fmt("on block %d", switchedAt));
+    }
+
+    // undo and redo
+    {
+        SongDocument d;
+        int changes = 0;
+        d.onChange = [&] (const Song&) { ++changes; };
+        d.edit([] (Song& s) { s.tracks[0].parts.push_back(Part {}); });
+        d.edit([] (Song& s) { s.tracks[0].parts[0].start = ticksPerBar; });
+        d.adjust([] (Song& s) { s.cursor = 96; });
+        const bool undone = d.undo() && d.song().tracks[0].parts[0].start == 0;
+        const bool again = d.undo() && d.song().tracks[0].parts.empty() && ! d.canUndo();
+        const bool redone = d.redo() && d.redo() && d.song().tracks[0].parts[0].start == ticksPerBar && ! d.canRedo();
+        check(undone && again && redone && changes == 7, "undo and redo walk the edits back and forth", fmt("%d changes", changes));
+    }
+}
+
 int main()
 {
+    song();
     keys();
     grooves();
     effects();

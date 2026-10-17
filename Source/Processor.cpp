@@ -33,6 +33,9 @@ namespace
 DebirthProcessor::DebirthProcessor()
     : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true))
 {
+    // Every change to the song is compiled and handed to the audio thread.
+    song.onChange = [this] (const Song& s) { rack.publish(std::make_unique<Playback>(compile(s))); };
+
     // Something to play the first time it is opened. A saved state replaces it.
     startAfresh(true);
     startTimerHz(20);
@@ -92,6 +95,7 @@ void DebirthProcessor::transposeToKey()
 void DebirthProcessor::timerCallback()
 {
     rack.mz950.service();
+    rack.collect();   // the song the audio thread handed back
 }
 
 void DebirthProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
@@ -239,12 +243,107 @@ namespace
         loadKnobs(t, m.knobs);
         load(t, m.track);
     }
+
+    //
+    // The song: a track a child, a part a child of that, and a part's notes as text - each
+    // note its tick, length, pitch and velocity, joined by colons.
+    //
+    juce::ValueTree saveSong(const Song& s, int mode)
+    {
+        juce::ValueTree t("Song");
+        t.setProperty("mode", mode == Mode::Song ? "song" : "pattern", nullptr);
+        t.setProperty("left", s.left, nullptr);
+        t.setProperty("right", s.right, nullptr);
+        t.setProperty("cycle", s.cycle, nullptr);
+        t.setProperty("cursor", s.cursor, nullptr);
+
+        for (const auto& track : s.tracks)
+        {
+            juce::ValueTree tt("Track");
+            tt.setProperty("name", juce::String(track.name), nullptr);
+            tt.setProperty("machine", machineName(track.machine), nullptr);
+            tt.setProperty("mute", track.mute, nullptr);
+            tt.setProperty("solo", track.solo, nullptr);
+            tt.setProperty("shuffle", track.shuffle, nullptr);
+            tt.setProperty("colour", track.colour, nullptr);
+
+            for (const auto& part : track.parts)
+            {
+                juce::ValueTree pt("Part");
+                pt.setProperty("name", juce::String(part.name), nullptr);
+                pt.setProperty("start", part.start, nullptr);
+                pt.setProperty("length", part.length, nullptr);
+                pt.setProperty("muted", part.muted, nullptr);
+
+                juce::StringArray notes;
+                for (const auto& n : part.notes)
+                    notes.add(juce::String(n.tick) + ":" + juce::String(n.length) + ":"
+                              + juce::String(n.pitch) + ":" + juce::String(n.velocity));
+                pt.setProperty("notes", notes.joinIntoString(" "), nullptr);
+                tt.appendChild(pt, nullptr);
+            }
+            t.appendChild(tt, nullptr);
+        }
+        return t;
+    }
+
+    Song loadSong(const juce::ValueTree& t)
+    {
+        Song s;
+        s.left = juce::jmax(0, (int) t.getProperty("left", 0));
+        s.right = juce::jmax(s.left, (int) t.getProperty("right", 4 * ticksPerBar));
+        s.cycle = (bool) t.getProperty("cycle", false);
+        s.cursor = juce::jmax(0, (int) t.getProperty("cursor", 0));
+
+        for (const auto& tt : t)
+        {
+            if (! tt.hasType("Track")) continue;
+
+            SongTrack track;
+            track.name = tt.getProperty("name").toString().toStdString();
+            track.machine = -1;
+            for (int m = 0; m < Rack::channels; ++m)
+                if (tt.getProperty("machine").toString() == machineName(m)) track.machine = m;
+            if (track.machine < 0) continue;   // a machine this rack does not have
+            track.mute = (bool) tt.getProperty("mute", false);
+            track.solo = (bool) tt.getProperty("solo", false);
+            track.shuffle = (bool) tt.getProperty("shuffle", true);
+            track.colour = (int) tt.getProperty("colour", track.machine);
+
+            for (const auto& pt : tt)
+            {
+                if (! pt.hasType("Part")) continue;
+
+                Part part;
+                part.name = pt.getProperty("name").toString().toStdString();
+                part.start = juce::jmax(0, (int) pt.getProperty("start", 0));
+                part.length = juce::jmax(1, (int) pt.getProperty("length", ticksPerBar));
+                part.muted = (bool) pt.getProperty("muted", false);
+
+                for (const auto& token : juce::StringArray::fromTokens(pt.getProperty("notes").toString(), " ", ""))
+                {
+                    const auto f = juce::StringArray::fromTokens(token, ":", "");
+                    if (f.size() != 4) continue;
+                    Note n;
+                    n.tick = juce::jmax(0, f[0].getIntValue());
+                    n.length = juce::jmax(1, f[1].getIntValue());
+                    n.pitch = juce::jlimit(0, 127, f[2].getIntValue());
+                    n.velocity = juce::jlimit(1, 127, f[3].getIntValue());
+                    part.notes.push_back(n);
+                }
+                part.sortNotes();
+                track.parts.push_back(std::move(part));
+            }
+            s.tracks.push_back(std::move(track));
+        }
+        return s;
+    }
 }
 
 juce::ValueTree DebirthProcessor::save() const
 {
     juce::ValueTree root("MzDebirth");
-    root.setProperty("version", 2, nullptr);
+    root.setProperty("version", 3, nullptr);
     root.setProperty("tempo", rack.tempo.load(), nullptr);
     root.setProperty("shuffle", rack.shuffle.load(), nullptr);
     root.setProperty("master", rack.master.load(), nullptr);
@@ -286,6 +385,10 @@ juce::ValueTree DebirthProcessor::save() const
         mixer.appendChild(ch, nullptr);
     }
     root.appendChild(mixer, nullptr);
+
+    auto songTree = saveSong(song.song(), rack.mode.load());
+    songTree.setProperty("view", view == View::Arrange ? "arrange" : "rack", nullptr);
+    root.appendChild(songTree, nullptr);
 
     return root;
 }
@@ -350,6 +453,14 @@ void DebirthProcessor::load(const juce::ValueTree& root)
         }
     }
 
+    // The song, from version 3 on; a rack from before has none, and gets a track a machine.
+    if (const auto s = root.getChildWithName("Song"); s.isValid())
+    {
+        song.replace(loadSong(s));
+        rack.mode = s.getProperty("mode").toString() == "song" ? Mode::Song : Mode::Pattern;
+        view = s.getProperty("view").toString() == "arrange" ? View::Arrange : View::Rack;
+    }
+
     ++loads;
 }
 
@@ -385,6 +496,9 @@ void DebirthProcessor::startAfresh(bool factoryGrooves)
     }
 
     if (factoryGrooves) writeFactoryGrooves();
+
+    song.replace(defaultSong());
+    rack.mode = Mode::Pattern;
 
     ++loads;
 }

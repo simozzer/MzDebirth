@@ -55,6 +55,14 @@ public:
 
     debirth::Rack rack;
 
+    // The song the Arrange window edits - message thread only. Every change reaches the
+    // rack as a new Playback.
+    debirth::SongDocument song;
+
+    // which view the window shows, the rack or the Arrange window - saved with the rest
+    enum class View { Rack, Arrange };
+    View view = View::Rack;
+
 private:
     void timerCallback() override;   // the sampler's patch, handed over and collected
     void writeFactoryGrooves();

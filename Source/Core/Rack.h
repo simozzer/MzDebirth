@@ -8,12 +8,17 @@
 #include "Key.h"
 #include "Machines.h"
 #include "Sampler.h"
+#include "SongPlayer.h"
 
 #include <atomic>
+#include <memory>
 #include <vector>
 
 namespace debirth
 {
+
+// What plays the machines: their patterns, as ReBirth's PATTERN mode, or the song.
+namespace Mode { enum { Pattern, Song }; }
 
 //
 // A channel of the mixer. The fader is 0 to 1, drawn to a square law; pan is -1 to +1,
@@ -45,12 +50,14 @@ public:
     enum { M303, M101, M808, M909, M950, channels };
 
     Rack();
+    ~Rack();
 
     void prepare(double sampleRate, int maxBlock);
     void render(float* left, float* right, int n);
 
     // the transport
     std::atomic<bool>  playing { false };
+    std::atomic<int>   mode    { Mode::Pattern };   // what plays the machines; a change waits for the bar
     std::atomic<float> tempo   { 120.0f };
     std::atomic<float> shuffle { 0.0f };    // 0 to 1
     std::atomic<float> master  { 0.8f };
@@ -78,7 +85,29 @@ public:
     // every machine's patterns and position, in rack order
     TrackBase& track(int machine);
 
+    //
+    // THE SONG, as the audio thread plays it. The panel compiles the song after every edit
+    // and hands it over here; the one it replaces comes back, to be deleted by collect(),
+    // which the panel calls on a timer - the audio thread neither allocates nor frees.
+    //
+    void publish(std::unique_ptr<Playback>);   // message thread
+    void collect();                            // message thread
+
+    // any thread: move the song's position while it plays, in ticks
+    void locate(int tick) { locateTo = tick; }
+
+    // any thread: the mode playing now, which a change waits for the bar to become
+    int playingNow() const { return modeNow.load(std::memory_order_relaxed); }
+
+    // any thread: where the song is, in ticks; -1 unless playing in SONG mode
+    double songPosition() const { return songTick.load(std::memory_order_relaxed); }
+
 private:
+    int beginBlock(int n);
+    void endBlock();
+    void dispatch(const SongPlayer::Due&);
+    void startMachines();
+    void stopMachines();
     void renderBlock(float* left, float* right, int n);
     void renderMachines(int from, int to);
     void renderPcfEnvelope(int n);
@@ -110,6 +139,18 @@ private:
     StepDelay delay;
     std::vector<float> sends;
     Compressor masterComp;
+
+    // the song: the one playing, the next handed over, and the last handed back
+    Playback* playback = nullptr;
+    std::atomic<Playback*> pending { nullptr }, retired { nullptr };
+    SongPlayer player;
+    static constexpr int maxSongDue = 512;
+    struct SongDue { int at; SongPlayer::Due due; };
+    SongDue songDue[maxSongDue];
+    int playingMode = Mode::Pattern;
+    std::atomic<int> modeNow { Mode::Pattern };
+    std::atomic<int> locateTo { -1 };
+    std::atomic<double> songTick { -1.0 };
 };
 
 } // namespace debirth

@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "Arrange/ArrangeView.h"
 #include "DrumRack.h"
 #include "EffectsBar.h"
 #include "KeyPanel.h"
@@ -62,7 +63,8 @@ private:
 };
 
 //
-// The whole window, at one design size: the transport, and the rack scrolling under it.
+// The whole window, at one design size: the transport, the effects units, and under them
+// either the rack, scrolling, or the Arrange window - RACK and ARRANGE, or F1 and F2.
 //
 class MainPanel final : public juce::Component, private juce::Timer
 {
@@ -85,6 +87,7 @@ private:
     void refresh();
     void saveFile();
     void loadFile();
+    void showView(int view);   // View::Rack or View::Arrange
 
     DebirthProcessor& processor;
     Look look;
@@ -93,6 +96,8 @@ private:
     EffectsBar effects;
     RackView rack;
     juce::Viewport viewport;
+    arrange::ArrangeView arrangeView;
+    Pad rackTab { "RACK" }, arrangeTab { "ARRANGE" }, songMode { "SONG MODE" };
 
     std::unique_ptr<juce::FileChooser> chooser;
     int seenLoads = -1;

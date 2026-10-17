@@ -87,6 +87,11 @@ public:
     void step();
     void gateOff();
 
+    // Played from the song, a note at a time. Two notes of the same key overlapping are
+    // struck twice and let go when the last of them ends.
+    void songNoteOn(int key, int vel);
+    void songNoteOff(int key);
+
     int activeVoices() const { return engine != nullptr ? engine->getActiveVoices() : 0; }
 
 private:
@@ -105,6 +110,7 @@ private:
 
     // what is sounding, and from which step
     bool held[NotePattern::notes] {};
+    uint8_t songHeld[NotePattern::notes] {};   // the song's notes sounding, a count a key
     const NotePattern* playing = nullptr;
     int playingStep = 0;
 };
