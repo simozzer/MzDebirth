@@ -402,13 +402,13 @@ void effects()
         sine(shut, 2000.0f, 0.5f);
         sine(open, 2000.0f, 0.5f);
 
-        PatternFilter f;
+        pcf::Filter f;
         f.prepare(rate);
         std::fill(env.begin(), env.end(), 0.0f);
-        f.process(shut.data(), nullptr, env.data(), 4800, s);
+        f.process(shut.data(), nullptr, env.data(), 4800, pcfSettings(s));
         f.reset();
         std::fill(env.begin(), env.end(), 1.0f);
-        f.process(open.data(), nullptr, env.data(), 4800, s);
+        f.process(open.data(), nullptr, env.data(), 4800, pcfSettings(s));
 
         check(rmsOf(shut, 960) < 0.01f && rmsOf(open, 960) > 0.25f, "the PCF opens as its envelope is struck",
               fmt("rms %.4f shut, %.3f open", rmsOf(shut, 960), rmsOf(open, 960)));

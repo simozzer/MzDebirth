@@ -34,7 +34,7 @@ void PcfDisplay::paint(juce::Graphics& g)
     const float w = inner.getWidth() / (float) stepsPerPattern;
     for (int s = 0; s < stepsPerPattern; ++s)
     {
-        const float level = pcfLevel(shownPattern, s);
+        const float level = pcf::level(shownPattern, s);
         const float h = juce::jmax(1.5f, inner.getHeight() * level);
         const juce::Rectangle<float> bar(inner.getX() + w * (float) s + 1.0f, inner.getBottom() - h, w - 2.0f, h);
         g.setColour(s == shownStep ? colours::ledRed.brighter(0.3f) : colours::ledRed.withAlpha(s % 4 == 0 ? 0.75f : 0.5f));
@@ -52,7 +52,7 @@ EffectsBar::EffectsBar(Rack& r)
 {
     auto& fx = rack.fx;
 
-    pcfPattern = std::make_unique<LedNumber>(1, pcfPatterns, 1, 2,
+    pcfPattern = std::make_unique<LedNumber>(1, pcf::patterns, 1, 2,
         [&fx] { return (int) fx.get(fx.indexOf("pcfPattern")) + 1; },
         [&fx] (int v) { fx.set(fx.indexOf("pcfPattern"), (float) (v - 1)); });
     pcfPattern->setTooltip("Which of the 32 PCF patterns plays the filter. Drag up or down, or use the wheel.");

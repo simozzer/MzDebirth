@@ -8,9 +8,10 @@ all on one clock, with ReBirth's effects units along the top.
 
 It plays the synths' real engines - [Mz303](https://github.com/simozzer/Mz303),
 [Mz101](https://github.com/simozzer/Mz101), [Mz808](https://github.com/simozzer/Mz808),
-[Mz909](https://github.com/simozzer/Mz909) and [Mz950](https://github.com/simozzer/Mz950).
-Nothing is copied: each engine is compiled straight from its own repository, so a fix to a
-synth reaches the rack too.
+[Mz909](https://github.com/simozzer/Mz909) and [Mz950](https://github.com/simozzer/Mz950) -
+and its PCF is [MzPCF](https://github.com/simozzer/MzPCF)'s. Nothing is copied: each engine
+is compiled straight from its own repository, so a fix to a synth or the PCF reaches the rack
+too.
 
 ## Getting it
 
@@ -66,7 +67,8 @@ ReBirth's four units, along under the transport:
 
 - **DIST** - drive, and a shape from soft, to hard, to a lopsided fuzz.
 - **PCF** - a filter played by one of 32 step patterns: struck on every sixteenth at that
-  step's level, closing again by DEC; low-pass or band-pass.
+  step's level, closing again by DEC; low-pass or band-pass. The same as the
+  [MzPCF](https://github.com/simozzer/MzPCF) plugin, to use on any track in a DAW.
 - **DELAY** - echoes 1 to 16 sixteenths behind at the rack's tempo, or triplets, with
   feedback and pan. They ring on after STOP.
 - **COMP** - ratio and threshold, for the channels switched into it, and for the whole mix
@@ -101,6 +103,7 @@ On Windows, with Visual Studio's C++ tools. The repositories go side by side:
         Mz808\
         Mz909\
         Mz950\        (or VirtualS950, its old name)
+        MzPCF\
         MzDebirth\
 
 Mz950's sample disks are not in its repository. Make them once, with its disk generator:
@@ -123,7 +126,8 @@ disks and all - and attaches them to a draft release, with the notes in
 `docs/releases/<tag>.md`.
 
 Any of the other repositories can be somewhere else: pass `-DJUCE_PATH=`, `-DMZ101_PATH=`,
-`-DMZ303_PATH=`, `-DMZ808_PATH=`, `-DMZ909_PATH=` or `-DMZ950_PATH=` to cmake.
+`-DMZ303_PATH=`, `-DMZ808_PATH=`, `-DMZ909_PATH=`, `-DMZ950_PATH=` or `-DMZPCF_PATH=` to
+cmake.
 
 ## Layout
 

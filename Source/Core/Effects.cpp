@@ -40,29 +40,18 @@ const std::vector<Control<EffectSettings>>& controlsFx()
     return table;
 }
 
-//============================================================================== PCF patterns
+//============================================================================== PCF
 
-//
-// Thirty-two rhythms for the filter, a hex digit a step, 0 to f: the plain ones first - every
-// beat, every off-beat, every step - then ramps, then broken ones.
-//
-float pcfLevel(int pattern, int step)
+pcf::Settings pcfSettings(const EffectSettings& s)
 {
-    static const char* const patterns[pcfPatterns] = {
-        "f000f000f000f000", "f0f0f0f0f0f0f0f0", "ffffffffffffffff", "0f0f0f0f0f0f0f0f",
-        "00f000f000f000f0", "f8f8f8f8f8f8f8f8", "ff00ff00ff00ff00", "f00ff00ff00ff00f",
-        "fc84fc84fc84fc84", "48cf48cf48cf48cf", "fedcba9876543210", "0123456789abcdef",
-        "fdb97531fdb97531", "13579bdf13579bdf", "f0e0d0c0b0a09080", "fa50fa50fa50fa50",
-        "f00f00f00f00f0f0", "f0080f008f00f080", "f000000080000000", "f0a0f0a0f0a0f05f",
-        "f0c0f080f0c0f040", "8f8f8f8f8f8f8f8f", "f000f000f0f0f0ff", "fff0fff0fff0fff0",
-        "f08cf08cf08cf08c", "0f800f800f800f80", "f9e2f9e2f9e2f9e2", "f0f00ff0f0f00f0f",
-        "f00000f000f00000", "f000f0f0f000f00f", "c0f0c0f0c0f0c0ff", "f0f0f0f0ffffffff",
-    };
-
-    const char* p = patterns[std::clamp(pattern, 0, pcfPatterns - 1)];
-    const char c = p[((step % 16) + 16) % 16];
-    const int v = c >= 'a' ? c - 'a' + 10 : c - '0';
-    return (float) v / 15.0f;
+    pcf::Settings p;
+    p.pattern = s.pcfPattern;
+    p.freq    = s.pcfFreq;
+    p.q       = s.pcfQ;
+    p.amount  = s.pcfAmount;
+    p.decay   = s.pcfDecay;
+    p.mode    = s.pcfMode;
+    return p;
 }
 
 //============================================================================== Distortion
@@ -105,45 +94,6 @@ void Distortion::process(float* x, int n, float amount, float shape)
         dcX = lp;
         dcY = out;
         x[i] = out;
-    }
-}
-
-//============================================================================== PatternFilter
-
-void PatternFilter::process(float* left, float* right, const float* env, int n, const EffectSettings& s)
-{
-    const float base = 40.0f * std::pow(2.0f, std::clamp(s.pcfFreq, 0.0f, 1.0f) * 8.0f);   // 40 Hz to 10 kHz
-    const float reach = std::clamp(s.pcfAmount, 0.0f, 1.0f) * 7.0f;                      // octaves
-    const float q = 0.5f + s.pcfQ * s.pcfQ * 19.5f;
-    const float k = 1.0f / q;
-    const bool bandPass = s.pcfMode == PcfMode::BP;
-    const float ceiling = fs * 0.45f;
-
-    float* sides[2] = { left, right };
-
-    for (int i = 0; i < n; ++i)
-    {
-        const float fc = std::min(ceiling, base * std::exp2(reach * env[i]));
-        const float g = std::tan(pi * fc / fs);
-        const float a1 = 1.0f / (1.0f + g * (g + k));
-        const float a2 = g * a1;
-        const float a3 = g * a2;
-
-        // Zavalishin's trapezoidal SVF
-        for (int c = 0; c < 2; ++c)
-        {
-            if (sides[c] == nullptr) continue;
-            Svf& st = state[c];
-            const float x = sides[c][i];
-            const float v3 = x - st.ic2;
-            const float v1 = a1 * st.ic1 + a2 * v3;
-            const float v2 = st.ic2 + a2 * st.ic1 + a3 * v3;
-            st.ic1 = 2.0f * v1 - st.ic1;
-            st.ic2 = 2.0f * v2 - st.ic2;
-
-            // the band output scaled to unity at its peak, whatever the Q
-            sides[c][i] = bandPass ? v1 * k * 1.5f : v2;
-        }
     }
 }
 

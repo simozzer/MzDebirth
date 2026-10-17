@@ -9,8 +9,8 @@
         .\build.ps1 -Release    and the files a release attaches, into dist\: the installer,
                                 and a zip of the app with the Mz950's disks
 
-    The engines are compiled from the synths' own repositories, beside this one - ..\Mz101,
-    ..\Mz303, ..\Mz808, ..\Mz909 and ..\Mz950 - and JUCE from ..\JUCE.
+    The engines are compiled from their own repositories, beside this one - ..\Mz101,
+    ..\Mz303, ..\Mz808, ..\Mz909, ..\Mz950 and ..\MzPCF - and JUCE from ..\JUCE.
 
     cl.exe is never on the PATH - vswhere says where Visual Studio is, and cmake comes from
     the PATH or from inside Visual Studio.

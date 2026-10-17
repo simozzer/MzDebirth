@@ -93,7 +93,7 @@ private:
     struct Inserts
     {
         Distortion dist[2];
-        PatternFilter pcf;
+        pcf::Filter pcf;
         Compressor comp;
     };
     Inserts inserts[channels];
@@ -103,7 +103,7 @@ private:
     struct Strike { int at; float level; };
     Strike strikes[64];
     int strikeCount = 0;
-    float pcfEnv = 0;
+    pcf::Envelope pcfEnv;
     std::atomic<int> pcfPosition { -1 };
     std::vector<float> envelope;
 

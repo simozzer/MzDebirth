@@ -6,15 +6,16 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 #
-# JUCE, and the machines' engines, live beside the repository rather than inside it: the
-# engines are compiled straight from each synth's own repository, so a fix to one reaches
-# both the synth and the rack. Override any of these with -D...=<path>.
+# JUCE, the machines' engines and the PCF live beside the repository rather than inside it:
+# each engine is compiled straight from its own repository - the synths', and MzPCF's - so a
+# fix to one reaches both its plugin and the rack. Override any of these with -D...=<path>.
 #
 set(JUCE_PATH  "${CMAKE_CURRENT_SOURCE_DIR}/../JUCE"  CACHE PATH "Where JUCE is checked out")
 set(MZ101_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../Mz101" CACHE PATH "Where Mz101 is checked out")
 set(MZ303_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../Mz303" CACHE PATH "Where Mz303 is checked out")
 set(MZ808_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../Mz808" CACHE PATH "Where Mz808 is checked out")
 set(MZ909_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../Mz909" CACHE PATH "Where Mz909 is checked out")
+set(MZPCF_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../MzPCF" CACHE PATH "Where MzPCF is checked out")
 
 # Mz950's repository may still be checked out under its old name.
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../Mz950")
@@ -32,7 +33,7 @@ if(NOT EXISTS "${JUCE_PATH}/CMakeLists.txt")
         "or pass -DJUCE_PATH=<wherever it is>.")
 endif()
 
-foreach(machine MZ101 MZ303 MZ808 MZ909)
+foreach(machine MZ101 MZ303 MZ808 MZ909 MZPCF)
     if(NOT EXISTS "${${machine}_PATH}/Source")
         message(FATAL_ERROR "No ${machine} at ${${machine}_PATH} - clone it beside this repository, "
                             "or pass -D${machine}_PATH=<wherever it is>.")
@@ -48,7 +49,7 @@ endif()
 add_subdirectory("${JUCE_PATH}" JUCE)
 
 #
-# The engines, and the sequencer that plays them. None of it links JUCE.
+# The engines, the PCF, and the sequencer that plays them. None of it links JUCE.
 #
 # The machines' Source folders go on the include path after this one's, so the engines are
 # named by their folder - "TB303/Engine.h" - and this project's own headers win any clash
@@ -70,7 +71,8 @@ set(CORE_SOURCES
     "${MZ950_ENGINE}/Engine.cpp"
     "${MZ950_ENGINE}/Voice.cpp"
     "${MZ950_ENGINE}/Disk.cpp"
-    "${MZ950_ENGINE}/Hfe.cpp")
+    "${MZ950_ENGINE}/Hfe.cpp"
+    "${MZPCF_PATH}/Source/PCF/Pcf.cpp")
 
 set(CORE_INCLUDES
     Source
@@ -78,7 +80,8 @@ set(CORE_INCLUDES
     "${MZ303_PATH}/Source"
     "${MZ808_PATH}/Source"
     "${MZ909_PATH}/Source"
-    "${MZ950_PATH}/Plugin/Source")
+    "${MZ950_PATH}/Plugin/Source"
+    "${MZPCF_PATH}/Source")
 
 # The sample disks that come with Mz950, for the rack to open with and the check to play.
 set(CORE_DEFINITIONS "MZ950_DISKS=\"${MZ950_PATH}/disks\"")

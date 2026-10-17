@@ -185,7 +185,7 @@ void Rack::prepare(double sampleRate, int maxBlock)
     }
     envelope.assign((size_t) blockSize, 0.0f);
     sends.assign((size_t) blockSize, 0.0f);
-    pcfEnv = 0;
+    pcfEnv.prepare(sampleRate);
     pcfPosition = -1;
 
     // sixteen steps at the slowest tempo, and some over
@@ -269,7 +269,7 @@ void Rack::renderBlock(float* left, float* right, int n)
         if (l == 0 && isStep && strikeCount < (int) (sizeof strikes / sizeof strikes[0]))
         {
             const int s = (int) (step % 16);
-            strikes[strikeCount++] = { at, pcfLevel((int) fx.get(fx.indexOf("pcfPattern")), s) };
+            strikes[strikeCount++] = { at, pcf::level((int) fx.get(fx.indexOf("pcfPattern")), s) };
             pcfPosition = s;
         }
     });
@@ -278,6 +278,7 @@ void Rack::renderBlock(float* left, float* right, int n)
 
     // The effects units' knobs, once a block.
     const EffectSettings settings = fx.read();
+    const pcf::Settings pcfPanel = pcfSettings(settings);
     renderPcfEnvelope(n);
 
     // The mixer. Each channel through its inserts, then its fader and pan, and its send to
@@ -300,7 +301,7 @@ void Rack::renderBlock(float* left, float* right, int n)
             in.dist[0].process(srcL, n, settings.distAmount, settings.distShape);
             if (srcR != nullptr) in.dist[1].process(srcR, n, settings.distAmount, settings.distShape);
         }
-        if (ch.pcf.load())  in.pcf.process(srcL, srcR, envelope.data(), n, settings);
+        if (ch.pcf.load())  in.pcf.process(srcL, srcR, envelope.data(), n, pcfPanel);
         else                in.pcf.reset();   // switched back in, it starts from rest
         if (ch.comp.load()) in.comp.process(srcL, srcR, n, settings.compThreshold, settings.compRatio);
 
@@ -354,18 +355,15 @@ void Rack::renderBlock(float* left, float* right, int n)
 //
 void Rack::renderPcfEnvelope(int n)
 {
-    const float decay = fx.get(fx.indexOf("pcfDecay"));
-    const float seconds = 0.015f * std::pow(100.0f, decay);   // 15 ms to 1.5 s
-    const float coef = std::exp(-1.0f / (seconds * (float) clock.getRate()));
+    pcfEnv.setDecay(fx.get(fx.indexOf("pcfDecay")));
 
     float* e = envelope.data();
     int next = 0;
     for (int i = 0; i < n; ++i)
     {
         while (next < strikeCount && strikes[next].at <= i)
-            pcfEnv = strikes[next++].level;
-        e[i] = pcfEnv;
-        pcfEnv *= coef;
+            pcfEnv.strike(strikes[next++].level);
+        e[i] = pcfEnv.next();
     }
 }
 

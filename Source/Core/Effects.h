@@ -4,6 +4,7 @@
 #pragma once
 
 #include "Knobs.h"
+#include "PCF/Pcf.h"
 
 #include <cstdint>
 #include <vector>
@@ -27,7 +28,7 @@ struct EffectSettings
     float pcfQ       = 0.4f;     // 0 to 1: resonance
     float pcfAmount  = 0.6f;     // 0 to 1: how far a step's level opens it, up to seven octaves
     float pcfDecay   = 0.35f;    // 0 to 1: how fast it closes again, 15 ms to 1.5 s
-    int   pcfMode    = 0;        // LP or BP
+    int   pcfMode    = 0;        // pcf::Mode: LP or BP
 
     // DELAY - a send
     int   delaySteps    = 3;     // 1 to 16 sixteenths
@@ -41,14 +42,17 @@ struct EffectSettings
     int   compMaster    = 0;     // the whole mix through it, too
 };
 
-namespace PcfMode { enum { LP, BP }; }
-
 const std::vector<Control<EffectSettings>>& controlsFx();
 
-constexpr int pcfPatterns = 32;
-
-// A PCF pattern's level on a step, 0 to 1.
-float pcfLevel(int pattern, int step);
+//
+// The PCF is MzPCF's - its patterns, envelope and filter, compiled from its repository, so
+// the rack's PCF and the plugin are one and the same. The rack strikes one pcf::Envelope on
+// its own clock, and each channel switched in keeps its own pcf::Filter.
+//
+// Its panel, as MzPCF's Settings: the rack has no MIX or LEVEL, so those stay at all
+// through the filter, and 0 dB.
+//
+pcf::Settings pcfSettings(const EffectSettings&);
 
 //
 // DIST. Driven, shaped, and filtered a little after, as a guitar amp's speaker would, so the
@@ -67,27 +71,6 @@ private:
     float lpCoef = 0.5f, lp = 0;
     float dcCoef = 0.9993f;
     float dcX = 0, dcY = 0;
-};
-
-//
-// PCF. A state-variable filter whose cutoff is opened by an envelope - the rack strikes the
-// envelope on every sixteenth, at that step's level in the pattern, and it dies away by
-// DECAY - so the filter plays a rhythm of its own over whatever goes through it. The
-// envelope is the rack's, one for every channel; each channel keeps its own filter.
-//
-class PatternFilter
-{
-public:
-    void prepare(double rate) { fs = (float) rate; reset(); }
-    void reset() { for (auto& s : state) s = {}; }
-
-    // env: the envelope, a value a sample. right may be null, for a mono channel.
-    void process(float* left, float* right, const float* env, int n, const EffectSettings&);
-
-private:
-    struct Svf { float ic1 = 0, ic2 = 0; };
-    Svf state[2];
-    float fs = 48000;
 };
 
 //
