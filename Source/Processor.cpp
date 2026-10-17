@@ -13,13 +13,22 @@ using namespace debirth;
 namespace
 {
     //
-    // The drum disk that comes with Mz950: in the disks folder beside the app, where the
-    // installer puts it, or failing that where the app was built from.
+    // The drum disk that comes with Mz950: where the installer puts it, or failing that where
+    // the app was built from.
+    //
+    // On Windows that is the disks folder beside the app. A Mac app is a bundle, sealed by its
+    // signature, so nothing can be put beside its executable; install.sh puts the disks in the
+    // user's Application Support instead, as Mz950's own Mac install does.
     //
     juce::File defaultDisk()
     {
+       #if JUCE_MAC
+        const auto installed = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                                   .getChildFile("Application Support/MzDebirth/Disks/DRUMS.hfe");
+       #else
         const auto installed = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
                                    .getParentDirectory().getChildFile("disks").getChildFile("DRUMS.hfe");
+       #endif
         if (installed.existsAsFile()) return installed;
 
        #ifdef MZ950_DISKS

@@ -1,0 +1,63 @@
+MzDebirth for macOS - BETA
+==========================
+
+A rack of the Mz synths - Mz303, Mz101, Mz808, Mz909 and Mz950 - played from a
+step sequencer, with an Arrange window for whole songs, in the spirit of the
+old ReBirth RB-338. A standalone app, with the Mz950's sample disks.
+Free and open source (AGPLv3). Created by Simon Moscrop. Independent - not
+affiliated with Reason Studios (Propellerhead), Steinberg or Roland.
+
+Runs on Apple Silicon and Intel Macs, macOS 11 or later.
+
+This is a beta. It's built on GitHub's Macs and passes the same checks as the
+Windows version, but nobody working on it has a Mac to try it on. If something
+doesn't work, please say so on https://github.com/simozzer/MzDebirth/issues
+
+
+INSTALLING - one command
+------------------------
+
+macOS will refuse to open anything in this download if you double-click it.
+That isn't a fault. Apple only lets through software whose developer has paid
+for an Apple account and sent it to Apple to be checked ("notarization"), and
+this project doesn't. So it's installed from Terminal instead:
+
+  1. Open Terminal (Applications > Utilities > Terminal).
+  2. Type  bash  and a space.
+  3. Drag install.sh from this folder into the Terminal window.
+  4. Press Return.
+
+It copies everything into place, with no password needed, and clears the
+"downloaded from the internet" flag that would otherwise stop the app
+opening. Then open MzDebirth from Applications.
+
+
+INSTALLING BY HAND, if you'd rather
+-----------------------------------
+
+  MzDebirth.app   ->  /Applications
+  Disks           ->  ~/Library/Application Support/MzDebirth/Disks
+
+then, in Terminal:
+
+  xattr -dr com.apple.quarantine /Applications/MzDebirth.app
+
+The other way, without Terminal: try to open the app once, then go to System
+Settings > Privacy & Security, scroll down, and click "Open Anyway".
+
+The Mz950 in the rack opens on Disks/DRUMS.hfe. If the disks aren't where it
+looks, it starts with none: use LOAD DISK on the Mz950 to open one.
+
+
+REMOVING IT
+-----------
+
+Delete the two things above. Nothing else is installed anywhere. Racks you
+save go in ~/Documents/MzDebirth; delete that too if you want them gone.
+
+
+MORE
+----
+
+README.md is the manual. The source, the Windows version and every release:
+https://github.com/simozzer/MzDebirth

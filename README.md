@@ -26,6 +26,26 @@ it is the same, to run without installing - keep the `disks` folder next to `MzD
 Windows 10 or 11, 64-bit. The app is not code-signed, so Windows may warn about an unknown
 publisher: choose **More info**, then **Run anyway**.
 
+### macOS (beta)
+
+Download **MzDebirth-*version*-macOS-beta.zip** from the
+[releases page](https://github.com/simozzer/MzDebirth/releases) and unzip it. It holds the
+app and the Mz950's disks, for Apple Silicon and Intel Macs on macOS 11 or later.
+
+It isn't signed by Apple, which takes a paid developer account, so macOS won't open it with a
+double-click. Install it from Terminal instead. Type `bash ` (with the space), drag
+`install.sh` from the unzipped folder into the Terminal window, and press Return:
+
+    bash ~/Downloads/MzDebirth-<version>-macOS-beta/install.sh
+
+It puts the app in Applications and the disks in `~/Library/Application Support/MzDebirth`,
+with no password needed, and clears the "downloaded from the internet" flag that would stop
+the app opening. `READ ME FIRST.txt` in the zip explains how to install by hand instead.
+
+It's a beta: built on GitHub's Macs, where it passes the same checks as the Windows version,
+but not yet tried on a real one. If something doesn't work, please
+[open an issue](https://github.com/simozzer/MzDebirth/issues).
+
 ## Getting started
 
 - **Options** (top left) picks the audio output.
@@ -221,7 +241,10 @@ the Mz950's checks and says so; `-Release` will not go on without them.
 
 Pushing a version tag (`git push origin v0.3.0`) builds the installer and zip on GitHub -
 disks and all - and attaches them to a draft release, with the notes in
-`docs/releases/<tag>.md`.
+`docs/releases/<tag>.md`. A Mac job then adds `MzDebirth-<version>-macOS-beta.zip` to the
+same draft. It's `.github/workflows/mac.yml`, which also runs on every push to `main` as a
+check. It makes the Mz950's disks itself, with the .NET SDK
+(`installer/mac/MakeDisks.csproj`): the same disks, byte for byte.
 
 Any of the other repositories can be somewhere else: pass `-DJUCE_PATH=`, `-DMZ101_PATH=`,
 `-DMZ303_PATH=`, `-DMZ808_PATH=`, `-DMZ909_PATH=`, `-DMZ950_PATH=` or `-DMZPCF_PATH=` to

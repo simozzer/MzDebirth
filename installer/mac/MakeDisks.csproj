@@ -1,0 +1,25 @@
+<!--
+  Mz950's disk generator (AkaiS950Synth), built with the .NET SDK so it runs on a Mac.
+
+  On Windows the generator is built with the .NET Framework's csc, which a Mac does not have;
+  the Mac build of MzDebirth makes its disks with this instead. Same sources, same disks: all
+  seven come out byte for byte the same as the Windows build's.
+
+  Run as the Mac build runs it, in .github/workflows/mac.yml: SynthRoot is an Mz950 checkout,
+  and the one argument the folder to write the disks to.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <NoWarn>CS0649;CS0168;CS0219</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- the List project's Program.cs is its own command line: a second Main -->
+    <Compile Include="$(SynthRoot)/AkaiS950List/*.cs" Exclude="$(SynthRoot)/AkaiS950List/Program.cs" />
+    <Compile Include="$(SynthRoot)/AkaiS950Synth/*.cs" />
+  </ItemGroup>
+</Project>

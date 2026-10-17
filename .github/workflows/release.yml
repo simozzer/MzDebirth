@@ -107,3 +107,13 @@ jobs:
                   -Uri "https://uploads.github.com/repos/$env:GITHUB_REPOSITORY/releases/$($release.id)/assets?name=$name" | Out-Null
               Write-Host "  $name"
           }
+
+  #
+  # The Mac zip, a beta, attached to the same release once the Windows job above has made it.
+  # The build itself is mac.yml, which also runs on every push to main as a check.
+  #
+  mac:
+    needs: windows
+    uses: ./.github/workflows/mac.yml
+    with:
+      tag: ${{ inputs.tag || github.ref_name }}
