@@ -10,9 +10,9 @@ namespace arrange
 
 TrackList::TrackList(State& s) : state(s)
 {
-    setTooltip("The tracks. Click to pick one; double-click its name to rename it; right-click for "
-               "its machine, colour, and to add or delete tracks. M mutes, S solos, SH swings it with "
-               "the SHUFFLE knob.");
+    setTooltip("The tracks, one for each machine in the rack. Click to pick one; double-click its name "
+               "to rename it; right-click for its colour. RACK goes to its machine, to turn the knobs. "
+               "M mutes, S solos, SH swings it with the SHUFFLE knob.");
 }
 
 void TrackList::setActivity(const std::array<bool, Rack::channels>& a)
@@ -35,8 +35,10 @@ int TrackList::rowAt(int y) const
 juce::Rectangle<int> TrackList::switchBounds(int row, int which) const
 {
     const auto r = rowBounds(row);
-    const int w = which == 2 ? 26 : 20;
-    const int right = r.getRight() - 8 - (which == 0 ? 52 : which == 1 ? 28 : 0);
+    const int widths[] = { 20, 20, 26, 36 };
+    const int offsets[] = { 52, 28, 0, 86 };   // from the right, to each one's right edge
+    const int w = widths[which];
+    const int right = r.getRight() - 8 - offsets[which];
     return { right - w, r.getCentreY() - 10, w, 20 };
 }
 
@@ -45,9 +47,9 @@ TrackList::Hit TrackList::hitAt(juce::Point<int> p, int& row) const
     row = rowAt(p.y);
     if (row < 0) return Hit::None;
 
-    for (int w = 0; w < 3; ++w)
+    for (int w = 0; w < 4; ++w)
         if (switchBounds(row, w).contains(p))
-            return w == 0 ? Hit::Mute : w == 1 ? Hit::Solo : Hit::Shuffle;
+            return w == 0 ? Hit::Mute : w == 1 ? Hit::Solo : w == 2 ? Hit::Shuffle : Hit::Rack;
 
     const auto r = rowBounds(row);
     if (p.x < 12) return Hit::Colour;
@@ -99,19 +101,19 @@ void TrackList::paint(juce::Graphics& g)
         // the name, and the machine under it
         g.setColour(t.mute ? colours::light.withAlpha(0.4f) : colours::light);
         g.setFont(fonts::bold(12.0f));
-        g.drawText(juce::String(t.name), r.withTrimmedLeft(30).withTrimmedRight(90).withHeight(trackHeight / 2 + 4).withTrimmedTop(4),
+        g.drawText(juce::String(t.name), r.withTrimmedLeft(30).withTrimmedRight(130).withHeight(trackHeight / 2 + 4).withTrimmedTop(4),
                    juce::Justification::centredLeft);
         g.setColour(colour.withAlpha(0.85f));
         g.setFont(fonts::bold(9.5f));
         g.drawText(juce::String(machineName(t.machine)).toUpperCase(),
-                   r.withTrimmedLeft(30).withTrimmedRight(90).withTrimmedTop(trackHeight / 2 + 2).withTrimmedBottom(4),
+                   r.withTrimmedLeft(30).withTrimmedRight(130).withTrimmedTop(trackHeight / 2 + 2).withTrimmedBottom(4),
                    juce::Justification::centredLeft);
 
-        // M, S, SH
-        const bool states[3] = { t.mute, t.solo, t.shuffle };
-        const char* const labels[3] = { "M", "S", "SH" };
-        const juce::Colour lit[3] = { colours::stepRed, colours::stepYellow, colours::stepOrange };
-        for (int w = 0; w < 3; ++w)
+        // M, S, SH, and RACK - never lit, it goes somewhere rather than switching something
+        const bool states[4] = { t.mute, t.solo, t.shuffle, false };
+        const char* const labels[4] = { "M", "S", "SH", "RACK" };
+        const juce::Colour lit[4] = { colours::stepRed, colours::stepYellow, colours::stepOrange, colours::light };
+        for (int w = 0; w < 4; ++w)
         {
             const auto b = switchBounds(i, w).toFloat();
             g.setColour(states[w] ? lit[w] : juce::Colour(0xff2c3038));
@@ -154,6 +156,9 @@ void TrackList::mouseDown(const juce::MouseEvent& e)
         case Hit::Mute:    toggle(&SongTrack::mute); break;
         case Hit::Solo:    toggle(&SongTrack::solo); break;
         case Hit::Shuffle: toggle(&SongTrack::shuffle); break;
+        case Hit::Rack:
+            if (state.showMachine) state.showMachine(state.song().tracks[(size_t) row].machine);
+            return;
         case Hit::Colour:
         case Hit::Machine: menu(row); break;
         default: break;
@@ -172,27 +177,6 @@ void TrackList::mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDe
     const int total = (int) state.song().tracks.size() * trackHeight;
     const int visible = getHeight() - rulerHeight;
     state.scrollY = juce::jlimit(0, juce::jmax(0, total - visible + trackHeight), state.scrollY - (int) (w.deltaY * 120.0f));
-    state.repaintAll();
-}
-
-void TrackList::addTrack()
-{
-    const auto& tracks = state.song().tracks;
-    const int machine = tracks.empty() ? 0 : tracks[(size_t) juce::jlimit(0, (int) tracks.size() - 1, state.track)].machine;
-
-    int same = 1;
-    for (const auto& t : tracks) same += t.machine == machine ? 1 : 0;
-
-    state.doc().edit([machine, same] (Song& s)
-    {
-        SongTrack t;
-        t.machine = machine;
-        t.name = std::string(machineName(machine)) + " " + std::to_string(same);
-        t.colour = (int) s.tracks.size() % trackColours;
-        s.tracks.push_back(t);
-    });
-    state.track = (int) state.song().tracks.size() - 1;
-    state.selection.clear();
     state.repaintAll();
 }
 
@@ -222,12 +206,9 @@ void TrackList::rename(int row)
 void TrackList::menu(int row)
 {
     const auto& t = state.song().tracks[(size_t) row];
+    const int machine = t.machine;
 
-    juce::PopupMenu machines, colourMenu;
-    // a track with parts moves only to a machine that reads its notes the same way
-    for (int m = 0; m < Rack::channels; ++m)
-        machines.addItem(100 + m, machineName(m), t.parts.empty() || machineKind(m) == machineKind(t.machine),
-                         t.machine == m);
+    juce::PopupMenu colourMenu;
     for (int c = 0; c < trackColours; ++c)
     {
         juce::PopupMenu::Item item("        ");
@@ -237,51 +218,30 @@ void TrackList::menu(int row)
         colourMenu.addItem(item);
     }
 
-    const int count = (int) state.song().tracks.size();
+    //
+    // No adding, deleting, moving or changing a track's machine: the tracks are the rack's
+    // machines, one each and in its order, so there is nothing of that kind to choose.
+    //
     juce::PopupMenu m;
     m.addSectionHeader(juce::String(t.name));
     m.addItem(1, "Rename...");
-    m.addSubMenu("Machine", machines);
     m.addSubMenu("Colour", colourMenu);
     m.addSeparator();
-    m.addItem(2, "Move up", row > 0);
-    m.addItem(3, "Move down", row < count - 1);
-    m.addSeparator();
-    m.addItem(4, "Add a track");
-    m.addItem(5, "Delete this track", count > 1);
+    m.addItem(2, juce::String("Show the ") + machineName(machine) + " in the rack");
 
     juce::Component::SafePointer<TrackList> self(this);
-    m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this).withMousePosition(), [self, row] (int id)
+    m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this).withMousePosition(), [self, row, machine] (int id)
     {
         if (self == nullptr || id == 0) return;
         auto& st = self->state;
 
         if (id == 1) { self->rename(row); return; }
-        if (id == 4) { self->addTrack(); return; }
+        if (id == 2) { if (st.showMachine) st.showMachine(machine); return; }
 
         st.doc().edit([row, id] (Song& s)
         {
-            auto& tracks = s.tracks;
-            if (row >= (int) tracks.size()) return;
-
-            if (id == 2 && row > 0)                          std::swap(tracks[(size_t) row], tracks[(size_t) row - 1]);
-            else if (id == 3 && row + 1 < (int) tracks.size()) std::swap(tracks[(size_t) row], tracks[(size_t) row + 1]);
-            else if (id == 5 && tracks.size() > 1)           tracks.erase(tracks.begin() + row);
-            else if (id >= 200)                              tracks[(size_t) row].colour = id - 200;
-            else if (id >= 100)
-            {
-                // a part's notes mean something else to a machine of another kind, so a track
-                // only moves to one of its own kind - or is empty
-                auto& t = tracks[(size_t) row];
-                const int to = id - 100;
-                if (t.parts.empty() || machineKind(to) == machineKind(t.machine)) t.machine = to;
-            }
+            if (row < (int) s.tracks.size() && id >= 200) s.tracks[(size_t) row].colour = id - 200;
         });
-
-        if (id == 2) st.track = row - 1;
-        if (id == 3) st.track = row + 1;
-        if (id == 5) st.track = juce::jlimit(0, (int) st.song().tracks.size() - 1, row);
-        st.selection.clear();
         st.repaintAll();
     });
 }

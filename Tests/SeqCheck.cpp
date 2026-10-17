@@ -133,6 +133,57 @@ void timing()
     check(seen == 2 && firstAt == 0, "a step on the block's end opens the next block");
 }
 
+// A track for each machine: a song with two for one machine, and none for another, comes out
+// with five in rack order and sounds as it did.
+void tracksAreMachines()
+{
+    std::printf("\na track a machine\n");
+
+    auto partAt = [] (int bar, int pitch)
+    {
+        Part p;
+        p.start = bar * ticksPerBar;
+        p.notes.push_back(Note { 0, ticksPerStep, pitch, 100 });
+        return p;
+    };
+
+    Song s;
+    SongTrack a, b, c;
+    a.name = "Lead";  a.machine = Rack::M101; a.colour = 6; a.parts = { partAt(4, 60) };
+    b.name = "Riser"; b.machine = Rack::M101; b.mute = true; b.parts = { partAt(0, 48) };
+    c.name = "Beat";  c.machine = Rack::M808; c.solo = false; c.parts = { partAt(0, 36) };
+    s.tracks = { c, a, b };
+
+    const Song before = s;
+    const Song m = oneTrackPerMachine(s);
+
+    bool order = m.tracks.size() == (size_t) Rack::channels;
+    for (size_t i = 0; order && i < m.tracks.size(); ++i) order = m.tracks[i].machine == (int) i;
+    check(order, "five tracks, track n playing machine n", fmt("%zu tracks", m.tracks.size()));
+
+    const auto& lead = m.tracks[Rack::M101];
+    check(lead.name == "Lead" && lead.colour == 6 && ! lead.mute && lead.parts.size() == 2,
+          "two tracks on the 101 become the first, with both its parts",
+          fmt("%s, %zu parts", lead.name.c_str(), lead.parts.size()));
+    check(lead.parts.size() == 2 && lead.parts[0].start == 0 && lead.parts[0].muted && ! lead.parts[1].muted,
+          "in order, the muted track's part muted and the other not");
+    check(m.tracks[Rack::M303].parts.empty() && m.tracks[Rack::M303].name == "Mz303",
+          "and a machine with no track gets an empty one");
+
+    // what it plays is what it played
+    const auto p0 = compile(before), p1 = compile(m);
+    bool same = p0.events.size() == p1.events.size();
+    for (size_t i = 0; same && i < p0.events.size(); ++i)
+        same = p0.events[i].tick == p1.events[i].tick && p0.events[i].machine == p1.events[i].machine
+            && p0.events[i].key == p1.events[i].key;
+    check(same, "and it plays the same notes as before", fmt("%zu events", p1.events.size()));
+
+    // a song handed to the document is made so, however it came
+    SongDocument doc;
+    doc.replace(before);
+    check(doc.song().tracks.size() == (size_t) Rack::channels, "a song loaded or replaced has a track a machine");
+}
+
 // DRAG and PUSH: the clock bent while one is held, the tempo itself left alone, and the beat
 // moved on by what the bend gained - whatever the blocks.
 void nudging()
@@ -353,6 +404,21 @@ void output()
     play(r, 40, 256, [] (int, auto&, auto&) {});   // let the gains ramp
     play(r, 400, 256, [&] (int, auto&, auto& rr) { for (float x : rr) right = std::fmax(right, std::fabs(x)); });
     check(right < 1.0e-6f, "panned hard left and the bass muted, the right is silent", fmt("peak %.2e", right));
+
+    // and the meters say so: the 808's all on the left, the muted bass nothing, and each
+    // reading taken once - the next one starts again from nothing
+    for (auto& c : r.channel) { c.peakL = 0.0f; c.peakR = 0.0f; }
+    float outL = 0;
+    play(r, 200, 256, [&] (int, auto& l, auto&) { for (float x : l) outL = std::fmax(outL, std::fabs(x)); });
+    const float drumL = r.channel[Rack::M808].peakL.exchange(0.0f), drumR = r.channel[Rack::M808].peakR.exchange(0.0f);
+    const float bassL = r.channel[Rack::M303].peakL.exchange(0.0f);
+    // read after the MASTER, as it reaches the output: the 808 is all the left has, but for
+    // the delay's echoes, so the two agree
+    check(drumL > 0.05f && std::abs(drumL - outL) < 0.25f * outL && drumR < 1.0e-6f,
+          "the 808's meter reads what it puts out, all on the left",
+          fmt("L %.2f R %.2e, the mix %.2f", drumL, drumR, outL));
+    check(bassL == 0.0f, "the muted 303's reads nothing", fmt("%.2e", bassL));
+    check(r.channel[Rack::M808].peakL.load() == 0.0f, "and a reading taken leaves the next to start from nothing");
 }
 
 } // namespace
@@ -996,6 +1062,10 @@ void demo()
     r.mode = Mode::Song;
 
     const Song s = demoSong(r);
+    bool inOrder = s.tracks.size() == (size_t) Rack::channels;
+    for (size_t i = 0; inOrder && i < s.tracks.size(); ++i) inOrder = s.tracks[i].machine == (int) i;
+    check(inOrder, "a track for each machine, in the rack's order", fmt("%zu tracks", s.tracks.size()));
+
     int empty = 0;
     for (const auto& t : s.tracks) empty += t.parts.empty() && (t.machine != Rack::M950 || kit) ? 1 : 0;
     check(empty == 0 && s.end() == 64 * ticksPerBar, "sixty-four bars, every track playing",
@@ -1058,6 +1128,7 @@ int main()
 {
     demo();
     song();
+    tracksAreMachines();
     keys();
     grooves();
     effects();

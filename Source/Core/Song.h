@@ -85,6 +85,17 @@ struct Song
 Song defaultSong();
 
 //
+// The song with exactly one track for each machine, in rack order - so track n plays
+// machine n, and the Arrange window's tracks are the rack's machines, one for one.
+//
+// A song with more than one track for a machine (0.5 and before let a song have as many as
+// it liked) has them merged into the first, which keeps its name, colour and switches. A
+// part from a muted track comes over muted, so the song sounds as it did; a track's solo
+// carries over to the machine's. A machine with no track gets an empty one.
+//
+Song oneTrackPerMachine(Song);
+
+//
 // A machine's pattern as a part: its steps as notes, played `repeats` times over. An accent
 // is velocity 127 and anything else 100; a slid bass note overlaps the next, and a tied 950
 // note carries on as one long note - so the part plays as the pattern does.

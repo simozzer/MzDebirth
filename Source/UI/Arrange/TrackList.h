@@ -11,8 +11,9 @@ namespace arrange
 {
 
 //
-// The tracks down the left of the Arrange window, as Cubase listed them: a colour, an
-// activity light, the name, the machine it plays, and its M (mute), S (solo) and SH
+// The tracks down the left of the Arrange window, as Cubase listed them - one for each
+// machine in the rack, in its order: a colour, an activity light, the name, the machine it
+// plays, RACK to go and turn that machine's knobs, and its M (mute), S (solo) and SH
 // (shuffle) switches. Click to pick a track; double-click the name to rename it; right-click
 // for the rest.
 //
@@ -29,16 +30,14 @@ public:
     void mouseDoubleClick(const juce::MouseEvent&) override;
     void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
-    // the track menu, from here or the Arrange window's ADD TRACK
-    void addTrack();
     void rename(int track);
 
 private:
-    enum class Hit { None, Colour, Name, Machine, Mute, Solo, Shuffle };
+    enum class Hit { None, Colour, Name, Machine, Mute, Solo, Shuffle, Rack };
 
     int rowAt(int y) const;
     juce::Rectangle<int> rowBounds(int row) const;
-    juce::Rectangle<int> switchBounds(int row, int which) const;   // 0 M, 1 S, 2 SH
+    juce::Rectangle<int> switchBounds(int row, int which) const;   // 0 M, 1 S, 2 SH, 3 RACK
     Hit hitAt(juce::Point<int>, int& row) const;
     void menu(int row);
 

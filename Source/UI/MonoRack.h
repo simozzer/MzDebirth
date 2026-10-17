@@ -76,6 +76,11 @@ public:
     void refresh();
     int preferredHeight() const;
 
+    // the step roll folded away, and told of when its bar is clicked - the height changes
+    void setFolded(bool);
+    bool isFolded() const { return ! fold.isOpen(); }
+    std::function<void()> onFold;
+
     void paint(juce::Graphics&) override;
     void resized() override;
 
@@ -93,6 +98,7 @@ private:
 
     PatternPanel patterns;
     std::vector<std::unique_ptr<juce::Component>> controls;
+    FoldBar fold;
     NoteRoll roll;
     MixerStrip strip;
 

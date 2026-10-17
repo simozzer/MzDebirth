@@ -36,6 +36,9 @@ public:
     void openPart(PartRef);
     void closeEditor();
 
+    // a track's RACK: the window shows the rack, at that machine
+    std::function<void(int machine)> onShowMachine;
+
 private:
     void scrollBarMoved(juce::ScrollBar*, double) override;
     juce::Rectangle<int> editorArea() const;
@@ -51,7 +54,7 @@ private:
     std::unique_ptr<PartEditor> editor;
 
     Pad tools[Tool::count];
-    Pad snap, zoomOut { "-" }, zoomIn { "+" }, undo { "UNDO" }, redo { "REDO" }, addTrack { "+ TRACK" };
+    Pad snap, zoomOut { "-" }, zoomIn { "+" }, undo { "UNDO" }, redo { "REDO" };
 
     juce::Rectangle<int> toolbar;
     int seenVersion = -1;

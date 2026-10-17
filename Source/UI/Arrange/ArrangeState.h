@@ -30,7 +30,7 @@ const char* snapName(int snap);
 constexpr int rulerHeight = 26;
 constexpr int trackHeight = 46;
 
-// The track colours: the machines' own first, then more for tracks added.
+// The track colours: the machines' own first, then more to choose from.
 juce::Colour trackColour(int index);
 constexpr int trackColours = 8;
 
@@ -73,6 +73,9 @@ struct State
     // Everything listening hears of a change: the song, or the view of it.
     std::function<void()> changed;
     void repaintAll() { if (changed) changed(); }
+
+    // Over to the rack, at a machine, to turn its knobs - track n's is machine n.
+    std::function<void(int machine)> showMachine;
 };
 
 //

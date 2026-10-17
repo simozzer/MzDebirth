@@ -17,7 +17,7 @@ namespace
     // bank A's patterns, by their number on the pads
     constexpr int A1 = 0, A2 = 1, A3 = 2, A4 = 3, A5 = 4, A6 = 5, A7 = 6, A8 = 7;
 
-    // the tracks, top to bottom
+    // the lines it is written in - merged at the end into a track a machine
     enum { Beat, Tops, Fx, Acid, Lead, Riser, Perc, trackCount };
 
     // C minor, for the riser to climb
@@ -133,8 +133,6 @@ Song demoSong(Rack& rack)
         t.shuffle = rack.track(s.machine).shuffle.load();
         song.tracks.push_back(t);
     }
-    song.tracks[Fx].shuffle = false;      // rolls and risers dead straight
-    song.tracks[Riser].shuffle = false;
 
     Writer w { rack, song };
 
@@ -230,8 +228,14 @@ Song demoSong(Rack& rack)
     w.pattern(Tops, A5, 60, 2);
     w.pattern(Acid, A5, 60, 2);
 
-    for (auto& t : song.tracks)
-        std::sort(t.parts.begin(), t.parts.end(), [] (const Part& a, const Part& b) { return a.start < b.start; });
+    //
+    // Written as seven lines, played as five machines: one track each, as the rack has. The
+    // 909's tops and its rolls go on one track, and the 101's lead and its risers and pad on
+    // another - they never sound together, so the one synth plays both.
+    //
+    song = oneTrackPerMachine(std::move(song));
+    song.tracks[Rack::M909].name = "Tops & Rolls";
+    song.tracks[Rack::M101].name = "Lead & Pad";
 
     song.left = 0;
     song.right = 64 * bar;

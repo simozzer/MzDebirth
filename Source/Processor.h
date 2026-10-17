@@ -7,6 +7,8 @@
 
 #include "Core/Rack.h"
 
+#include <array>
+
 //
 // The rack, as a JUCE processor - built only as a standalone app for now. It has no
 // parameters for a host to see: the panel talks to the rack directly, and the whole of it,
@@ -62,6 +64,13 @@ public:
     // which view the window shows, the rack or the Arrange window - saved with the rest
     enum class View { Rack, Arrange };
     View view = View::Rack;
+
+    // which machines have their step rolls folded away in the rack - saved with the rest
+    std::array<bool, debirth::Rack::channels> folded {};
+
+    // The window's size, as the app last left it; 0 until it has been. Kept with the app's own
+    // state and not in a rack's file: loading a rack does not move anybody's window.
+    int windowWidth = 0, windowHeight = 0;
 
 private:
     void timerCallback() override;   // the sampler's patch, handed over and collected

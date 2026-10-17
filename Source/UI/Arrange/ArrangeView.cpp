@@ -33,6 +33,7 @@ ArrangeView::ArrangeView(DebirthProcessor& p)
     : state(p), tracks(state), ruler(state), lane(state), transport(state)
 {
     state.changed = [this] { update(); };
+    state.showMachine = [this] (int machine) { if (onShowMachine) onShowMachine(machine); };
 
     for (int t = 0; t < Tool::count; ++t)
     {
@@ -58,11 +59,8 @@ ArrangeView::ArrangeView(DebirthProcessor& p)
     redo.setTooltip("Redo it (Ctrl+Y).");
     undo.onPress = [this] { state.doc().undo(); state.selection.clear(); update(); };
     redo.onPress = [this] { state.doc().redo(); state.selection.clear(); update(); };
-    addTrack.setShowsLed(false);
-    addTrack.setTooltip("Add a track, playing the same machine as the one picked.");
-    addTrack.onPress = [this] { tracks.addTrack(); };
 
-    for (juce::Component* c : std::initializer_list<juce::Component*> { &snap, &zoomOut, &zoomIn, &undo, &redo, &addTrack })
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &snap, &zoomOut, &zoomIn, &undo, &redo })
         addAndMakeVisible(c);
 
     lane.onOpenPart = [this] (PartRef r) { openPart(r); };
@@ -291,8 +289,6 @@ void ArrangeView::resized()
         t.removeFromLeft(4);
         zoomIn.setBounds(t.removeFromLeft(30));
 
-        addTrack.setBounds(t.removeFromRight(80));
-        t.removeFromRight(16);
         redo.setBounds(t.removeFromRight(60));
         t.removeFromRight(4);
         undo.setBounds(t.removeFromRight(60));

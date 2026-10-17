@@ -73,6 +73,7 @@ void DrumRack::refresh()
 void DrumRack::tick(bool blinkPhase)
 {
     patterns.tick(blinkPhase);
+    strip.tick();
     showRow();
 
     const int pos = playing() && track.current == track.selected ? track.position.load() : -1;

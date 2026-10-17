@@ -355,6 +355,11 @@ juce::ValueTree DebirthProcessor::save() const
         bankKeys.add(rack.bankKey[b].load() < 0 ? juce::String("-") : juce::String(Key::fromIndex(rack.bankKey[b].load()).code()));
     root.setProperty("bankKeys", bankKeys.joinIntoString(" "), nullptr);
 
+    juce::StringArray foldedNames;
+    for (int m = 0; m < Rack::channels; ++m)
+        if (folded[(size_t) m]) foldedNames.add(machineNames[m]);
+    root.setProperty("folded", foldedNames.joinIntoString(" "), nullptr);
+
     root.appendChild(saveMachine(machineNames[Rack::M303], rack.mz303), nullptr);
     root.appendChild(saveMachine(machineNames[Rack::M101], rack.mz101), nullptr);
     root.appendChild(saveMachine(machineNames[Rack::M808], rack.mz808), nullptr);
@@ -404,6 +409,11 @@ void DebirthProcessor::load(const juce::ValueTree& root)
     rack.tempo = (float) root.getProperty("tempo", 120.0f);
     rack.shuffle = (float) root.getProperty("shuffle", 0.0f);
     rack.master = (float) root.getProperty("master", 0.8f);
+
+    // the step rolls folded away: none, in a rack saved before they could be
+    const auto foldedNames = juce::StringArray::fromTokens(root.getProperty("folded").toString(), false);
+    for (int m = 0; m < Rack::channels; ++m)
+        folded[(size_t) m] = foldedNames.contains(machineNames[m]);
 
     // the key, as its code: "8A"; -1 for anything else
     auto keyOf = [] (const juce::String& code)
@@ -517,14 +527,27 @@ void DebirthProcessor::startAfresh(bool factoryGrooves)
 
 void DebirthProcessor::getStateInformation(juce::MemoryBlock& dest)
 {
-    if (auto xml = save().createXml())
+    auto tree = save();
+    if (windowWidth > 0 && windowHeight > 0)
+        tree.setProperty("window", juce::String(windowWidth) + " " + juce::String(windowHeight), nullptr);
+
+    if (auto xml = tree.createXml())
         copyXmlToBinary(*xml, dest);
 }
 
 void DebirthProcessor::setStateInformation(const void* data, int size)
 {
     if (auto xml = getXmlFromBinary(data, size))
-        load(juce::ValueTree::fromXml(*xml));
+    {
+        const auto tree = juce::ValueTree::fromXml(*xml);
+        const auto window = juce::StringArray::fromTokens(tree.getProperty("window").toString(), false);
+        if (window.size() == 2)
+        {
+            windowWidth = window[0].getIntValue();
+            windowHeight = window[1].getIntValue();
+        }
+        load(tree);
+    }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

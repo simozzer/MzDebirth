@@ -59,10 +59,23 @@ public:
     void refresh();
     int preferredHeight() const;
 
+    // where a machine's unit begins, to scroll to; and a moment's ring round it, to find it by
+    int unitTop(int machine);
+    void flash(int machine);
+
+    // a step roll folded or unfolded: the rack is a different height
+    std::function<void()> onHeightChanged;
+
     void paint(juce::Graphics&) override;
+    void paintOverChildren(juce::Graphics&) override;
     void resized() override;
 
 private:
+    void folded();
+
+    DebirthProcessor& processor;
+    int flashing = -1, flashTicks = 0;
+
     MonoRack mz303, mz101;
     DrumRack mz808, mz909;
     SamplerRack mz950;
@@ -98,6 +111,7 @@ private:
     void saveFile();
     void loadFile();
     void showView(int view);   // View::Rack or View::Arrange
+    void showMachine(int machine);
 
     DebirthProcessor& processor;
     Look look;
@@ -122,7 +136,10 @@ public:
     void paint(juce::Graphics&) override;
     void resized() override;
 
+    static constexpr int minHeight = 800;   // the window's, in pixels
+
 private:
+    DebirthProcessor& owner;
     MainPanel panel;
     juce::TooltipWindow tooltips { this, 700 };
 

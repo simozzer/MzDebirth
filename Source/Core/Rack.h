@@ -37,6 +37,11 @@ struct Channel
     std::atomic<bool>  pcf   { false };
     std::atomic<bool>  comp  { false };
     std::atomic<float> delay { 0.0f };    // the send, 0 to 1
+
+    // For the meter: the loudest sample out of the channel, after its fader, pan and the
+    // MASTER - what it puts into the output - since the panel last took it. The audio thread
+    // raises it; the panel takes it, leaving 0.
+    std::atomic<float> peakL { 0.0f }, peakR { 0.0f };
 };
 
 //

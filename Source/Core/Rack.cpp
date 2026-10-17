@@ -9,6 +9,16 @@
 namespace debirth
 {
 
+namespace
+{
+    // Raised to v if v is higher - and still raised, should the panel take it in between.
+    void raise(std::atomic<float>& a, float v)
+    {
+        float was = a.load(std::memory_order_relaxed);
+        while (v > was && ! a.compare_exchange_weak(was, v, std::memory_order_relaxed)) {}
+    }
+}
+
 //============================================================================== the panels
 
 const std::vector<Control<tb303::Settings>>& controls303()
@@ -471,9 +481,17 @@ void Rack::renderBlock(float* left, float* right, int n)
 
     for (int i = 0; i < n; ++i) left[i] = right[i] = send[i] = 0.0f;
 
+    //
+    // The meters read each channel as it reaches the output: after its fader and pan, and
+    // the MASTER too. Before the MASTER, a drum machine at its usual fader peaks over full
+    // scale on every kick while the mix it makes sits at -3 dB - a meter in the red for
+    // nothing. After it, red means this machine alone would take the output over.
+    //
+    const float meterGain = master.load() * master.load();
+
     for (int c = 0; c < channels; ++c)
     {
-        const Channel& ch = channel[c];
+        Channel& ch = channel[c];
         float* srcL = buffers[c].data();
         float* srcR = c == M950 ? sampleRight.data() : nullptr;
 
@@ -496,20 +514,28 @@ void Rack::renderBlock(float* left, float* right, int n)
         if (srcR == nullptr) srcR = srcL;
         const float dl = (toL - gainL[c]) * inv, dr = (toR - gainR[c]) * inv, ds = (toSend - sendGain[c]) * inv;
         float gl = gainL[c], gr = gainR[c], gs = sendGain[c];
+        float peakL = 0.0f, peakR = 0.0f;
 
         for (int i = 0; i < n; ++i)
         {
             gl += dl;
             gr += dr;
             gs += ds;
-            left[i] += srcL[i] * gl;
-            right[i] += srcR[i] * gr;
+            const float l = srcL[i] * gl, r = srcR[i] * gr;
+            left[i] += l;
+            right[i] += r;
             send[i] += 0.5f * (srcL[i] + srcR[i]) * gs;
+            peakL = std::max(peakL, std::abs(l));
+            peakR = std::max(peakR, std::abs(r));
         }
 
         gainL[c] = toL;
         gainR[c] = toR;
         sendGain[c] = toSend;
+
+        // the meter's peaks, held until the panel takes them; only ever raised here
+        raise(ch.peakL, peakL * meterGain);
+        raise(ch.peakR, peakR * meterGain);
     }
 
     // The delay comes back into the mix, the whole of which can go through the COMP too.

@@ -57,6 +57,50 @@ Song defaultSong()
     return s;
 }
 
+Song oneTrackPerMachine(Song s)
+{
+    std::vector<SongTrack> merged;
+
+    for (int m = 0; m < Rack::channels; ++m)
+    {
+        SongTrack out;
+        out.name = machineName(m);
+        out.machine = m;
+        out.colour = m;
+
+        bool found = false, allMuted = true;
+        for (const auto& t : s.tracks)
+            if (t.machine == m) allMuted &= t.mute;
+
+        for (auto& t : s.tracks)
+        {
+            if (t.machine != m) continue;
+            if (! found)
+            {
+                out.name = t.name;
+                out.colour = t.colour;
+                out.shuffle = t.shuffle;
+                found = true;
+            }
+            out.solo |= t.solo;
+
+            // muted with the whole machine, the track says so; muted alone, its parts do
+            for (auto& p : t.parts)
+            {
+                if (t.mute && ! allMuted) p.muted = true;
+                out.parts.push_back(std::move(p));
+            }
+        }
+        out.mute = found && allMuted;
+
+        std::stable_sort(out.parts.begin(), out.parts.end(), [] (const Part& a, const Part& b) { return a.start < b.start; });
+        merged.push_back(std::move(out));
+    }
+
+    s.tracks = std::move(merged);
+    return s;
+}
+
 //============================================================================== pattern to part
 
 namespace
@@ -267,7 +311,7 @@ void SongDocument::adjust(const std::function<void(Song&)>& change)
 
 void SongDocument::replace(Song s)
 {
-    current = std::move(s);
+    current = oneTrackPerMachine(std::move(s));   // however it was saved or written
     undoStack.clear();
     redoStack.clear();
     changed();

@@ -29,6 +29,9 @@ publisher: choose **More info**, then **Run anyway**.
 ## Getting started
 
 - **Options** (top left) picks the audio output.
+- **The window**: drag it wider and everything grows with it; drag it taller (from 800
+  pixels) and you see more of the rack at once, or more of the song. It opens at the size
+  it was left.
 - **PLAY**, or the space bar. A new rack opens on the **demo song** - an acid rave tune made
   from the factory grooves, two minutes of intro, builds, drops and a breakdown - in the
   Arrange window. Turn **SONG MODE** off and every machine plays its own pattern, A1 to
@@ -54,9 +57,10 @@ publisher: choose **More info**, then **Run anyway**.
 ## The Arrange window
 
 A second way to work, after Cubase on the Atari ST: the song laid out along a ruler of bars,
-a track for each machine down the left, and on each track *parts* - notes of any length at
-any position, not 16-step patterns. The rack is still a click away, for the sound: every
-knob, fader and effect plays the song as it plays the patterns.
+a track for each machine down the left - the rack's five, in its order, one each - and on
+each track *parts*: notes of any length at any position, not 16-step patterns. The rack is
+still a click away, for the sound: every knob, fader and effect plays the song as it plays
+the patterns, and a track's **RACK** goes straight to its machine.
 
 ![The Arrange window with the demo song: the rolls and risers building to each drop, and the breakdown between](docs/img/arrange.png)
 
@@ -64,9 +68,8 @@ The **demo song** a new rack opens with shows the way: bank A's grooves laid out
 bars at 132 bpm, with parts written for it. In each build the kick drops away, a 909 snare
 roll speeds up from quarters to 32nds, and a 101 riser climbs C minor. Each build cuts out a
 beat before the drop, which lands with a crash. The breakdown holds the 101 long over the
-chords, gliding between them. Its tracks show the other way to use them, too: two for the
-909 (the *Tops*, and the *Rolls & FX*) and two for the 101 (the *Lead*, and the
-*Riser & Pad*).
+chords, gliding between them. The 909's track carries both its grooves and the rolls, and
+the 101's both the lead and the risers and pad, which take turns.
 
 - **SONG MODE** (beside the tabs) chooses what plays the machines: the song, or - off, as
   ReBirth's PATTERN mode - their patterns. Changed while playing, it waits for the bar.
@@ -83,9 +86,11 @@ chords, gliding between them. Its tracks show the other way to use them, too: tw
   - **GLUE** joins a part to the next.
   - **SNAP** sets what they all keep to: a bar, a beat, a sixteenth, or nothing. The
     toolbox menu also *Repeats* parts and renames them.
-- **The tracks:** M mutes a track, S solos it, SH has it swing with the SHUFFLE knob.
-  **+ TRACK** adds another track for a machine - two 808 tracks, say, one for the kick and
-  one for the hats. Right-click a track to rename it, recolour it, move it or delete it.
+- **The tracks:** one for each machine, so the song and the rack always match. M mutes a
+  track, S solos it, SH has it swing with the SHUFFLE knob, and **RACK** shows that machine
+  in the rack, ringed for a moment, to turn its knobs. Right-click a track to rename or
+  recolour it. A song saved by 0.5 or before with two tracks for one machine opens with them
+  merged into one, sounding as it did.
 - **The ruler:** click to move the cursor (and the song, while it plays). Drag the **L** and
   **R** flags for the locators, or shift-drag to set both. Double-click to turn the cycle
   on or off.
@@ -134,6 +139,12 @@ Double-click a part to edit it:
   on the notes it shares with the step before. The keys the programme plays are lit, and a
   drum kit's are named by their samples. It opens with the drum disk that comes with Mz950.
 
+The step editors of the **Mz303**, **Mz101** and **Mz950** fold away: click the
+**STEP SEQUENCER** bar over one, and the machine folds down to its knobs, its pattern
+section and mixer strip packing down beside them (the inserts and MUTE as lettered keys that
+glow when on, the fader and meter on their sides). The bar stays where it was, under the knobs, to unfold
+it again. The rack remembers which are folded.
+
 Every machine has four banks of eight patterns, of up to sixteen steps (**STEPS**), with
 **COPY**, **PASTE** and **CLEAR**, and its own **SHUFFLE** switch: whether it swings with the
 transport's SHUFFLE knob.
@@ -154,7 +165,11 @@ ReBirth's four units, along under the transport:
   with **MASTER**.
 
 Each machine's mixer strip has its pan, its **DELAY** send, its switches into **DIST**,
-**PCF** and **COMP** - in that order, before the fader - its fader and **MUTE**.
+**PCF** and **COMP** - in that order, before the fader - its fader and **MUTE**, and a
+stereo **meter** beside the fader. The meter reads what the machine puts into the output,
+after its fader, pan and the MASTER: green to -12 dB, yellow to 0, and red over it, where
+that machine alone would take the output past full scale. It falls as a peak meter does,
+with the highest point held for a second.
 
 ## Keys, for harmonic mixing
 

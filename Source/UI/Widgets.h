@@ -33,6 +33,7 @@ public:
     void setLedColour(juce::Colour c) { led = c; repaint(); }
     void setShowsLed(bool b)          { showsLed = b; repaint(); }
     void setArrow(int dir)            { arrow = dir; repaint(); }   // a triangle for the text: -1 left, +1 right
+    void setLitFace(bool b)           { litFace = b; repaint(); }   // lit, the whole face takes the LED's colour
 
     bool isLit() const { return lit; }
 
@@ -43,7 +44,7 @@ public:
 private:
     juce::String text;
     juce::Colour face { colours::pad }, ink { colours::light }, led { colours::ledRed };
-    bool lit = false, marked = false, pressed = false, showsLed = true;
+    bool lit = false, marked = false, pressed = false, showsLed = true, litFace = false;
     int arrow = 0;
 };
 
@@ -141,6 +142,31 @@ private:
 };
 
 //
+// The bar over a machine's step roll, with a triangle: a click folds the roll away, giving
+// its room to the other machines' knobs, and another brings it back.
+//
+class FoldBar final : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    static constexpr int height = 16;
+
+    FoldBar();
+
+    void setOpen(bool);
+    bool isOpen() const { return open; }
+    void setInk(juce::Colour c) { ink = c; repaint(); }
+
+    std::function<void()> onToggle;
+
+    void paint(juce::Graphics&) override;
+    void mouseDown(const juce::MouseEvent&) override;
+
+private:
+    bool open = true;
+    juce::Colour ink { colours::light };
+};
+
+//
 // A machine's pattern section: eight pads for the patterns in a bank, the four banks, how
 // many steps the pattern has, the machine's SHUFFLE switch, and copy, paste and clear.
 //
@@ -154,6 +180,13 @@ public:
 
     void tick(bool blinkPhase);   // from the panel's timer
 
+    //
+    // Packed into four rows, for a machine folded down: the pads closer, their labels gone,
+    // the banks and steps on one row and SHUFFLE and the editing on the next.
+    //
+    static constexpr int height = 212, compactHeight = 102;
+    void setCompact(bool);
+
     void paint(juce::Graphics&) override;
     void resized() override;
 
@@ -162,6 +195,7 @@ private:
 
     debirth::TrackBase& track;
     std::function<bool()> playing;
+    bool compact = false;
 
     Pad numbers[debirth::patternsPerBank];
     Pad bankPads[debirth::banks];
@@ -173,6 +207,29 @@ private:
 };
 
 //
+// A channel's level, as two bars, left and right: -48 dB to +6, green to -12, yellow to 0
+// and red over it. It falls 24 dB a second, as a peak meter does, and the highest it reached
+// is held a second as a line.
+//
+class LevelMeter final : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    LevelMeter();
+
+    void setVertical(bool v) { vertical = v; repaint(); }
+
+    // the loudest samples since the last push - 30 a second, from the panel's timer
+    void push(float peakL, float peakR);
+
+    void paint(juce::Graphics&) override;
+
+private:
+    struct Bar { float level = -100.0f, held = -100.0f; int holdFor = 0; };
+    Bar bars[2];
+    bool vertical = true;
+};
+
+//
 // A channel of the mixer, beside the machine it carries: pan, fader and mute.
 //
 class MixerStrip final : public juce::Component
@@ -181,6 +238,14 @@ public:
     MixerStrip(debirth::Channel&, const juce::String& name);
 
     void refresh();
+    void tick();   // the meter, from the panel's timer
+
+    //
+    // Folded down beside a folded machine: PAN and DELAY side by side, the inserts and MUTE
+    // as a row of lettered keys that glow when on, and the fader and meter on their sides.
+    //
+    static constexpr int compactHeight = 116;
+    void setCompact(bool);
 
     void paint(juce::Graphics&) override;
     void resized() override;
@@ -188,11 +253,17 @@ public:
 private:
     debirth::Channel& channel;
     juce::String name;
+    bool compact = false;
     Knob pan, delay;
     Pad dist { "DIST" }, pcf { "PCF" }, comp { "COMP" };
     juce::Slider fader;
+    LevelMeter meter;
     Pad mute { "MUTE" };
 };
+
+// The least a machine stands folded: its pattern section and mixer strip, both compact.
+constexpr int foldedMinimum = PatternPanel::compactHeight > MixerStrip::compactHeight
+                            ? PatternPanel::compactHeight : MixerStrip::compactHeight;
 
 // A panel's bevelled face, for the racks.
 void drawFace(juce::Graphics&, juce::Rectangle<float>, juce::Colour);

@@ -60,8 +60,29 @@ void Look::drawRotarySlider(juce::Graphics& g, int x, int y, int width, int heig
 
 void Look::drawLinearSlider(juce::Graphics& g, int x, int y, int width, int height,
                             float sliderPos, float, float,
-                            juce::Slider::SliderStyle, juce::Slider& s)
+                            juce::Slider::SliderStyle style, juce::Slider& s)
 {
+    // On its side, where a strip is folded down too short for it to stand: the same slot
+    // and cap, turned, without the marks there is no room for.
+    if (style == juce::Slider::LinearHorizontal)
+    {
+        const float cy = (float) y + (float) height * 0.5f;
+        const float left = (float) x, right = (float) (x + width);
+
+        g.setColour(juce::Colour(0xff0d0d0e));
+        g.fillRoundedRectangle(left - 4.0f, cy - 2.5f, (right - left) + 8.0f, 5.0f, 2.0f);
+
+        const juce::Rectangle<float> cap(sliderPos - 7.0f, cy - 7.0f, 14.0f, 14.0f);
+        g.setGradientFill(juce::ColourGradient(juce::Colour(0xff4a4b4f), cap.getX(), cap.getY(),
+                                               juce::Colour(0xff17171a), cap.getX(), cap.getBottom(), false));
+        g.fillRoundedRectangle(cap, 2.0f);
+        g.setColour(juce::Colours::black);
+        g.drawRoundedRectangle(cap, 2.0f, 1.0f);
+        g.setColour(s.findColour(juce::Slider::thumbColourId));
+        g.fillRect(sliderPos - 0.75f, cap.getY() + 2.0f, 1.5f, cap.getHeight() - 4.0f);
+        return;
+    }
+
     // a fader: a slot, marks either side, and a cap with a line across it
     const float cx = (float) x + (float) width * 0.5f;
     const float top = (float) y, bottom = (float) (y + height);

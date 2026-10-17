@@ -294,7 +294,8 @@ namespace
 //============================================================================== RackView
 
 RackView::RackView(DebirthProcessor& p)
-    : mz303(p.rack.mz303, p.rack.channel[Rack::M303], [&p] { return p.rack.playing.load(); },
+    : processor(p),
+      mz303(p.rack.mz303, p.rack.channel[Rack::M303], [&p] { return p.rack.playing.load(); },
             theme303(), layout303(), true),
       mz101(p.rack.mz101, p.rack.channel[Rack::M101], [&p] { return p.rack.playing.load(); },
             theme101(), layout101(), false),
@@ -305,6 +306,39 @@ RackView::RackView(DebirthProcessor& p)
       mz950(p.rack.mz950, p.rack.channel[Rack::M950], [&p] { return p.rack.playing.load(); }, theme950())
 {
     for (auto* u : units()) addAndMakeVisible(u);
+
+    // the melodic machines' step rolls fold away; the drum machines' grids are their panels
+    mz303.onFold = mz101.onFold = mz950.onFold = [this] { folded(); };
+}
+
+void RackView::folded()
+{
+    processor.folded[Rack::M303] = mz303.isFolded();
+    processor.folded[Rack::M101] = mz101.isFolded();
+    processor.folded[Rack::M950] = mz950.isFolded();
+    if (onHeightChanged) onHeightChanged();
+}
+
+int RackView::unitTop(int machine)
+{
+    const auto all = units();
+    return all[(size_t) juce::jlimit(0, (int) all.size() - 1, machine)]->getY();
+}
+
+void RackView::flash(int machine)
+{
+    flashing = machine;
+    flashTicks = 30;   // a second, at the panel's 30 a second
+    repaint();
+}
+
+void RackView::paintOverChildren(juce::Graphics& g)
+{
+    if (flashing < 0 || flashTicks <= 0) return;
+
+    const auto r = units()[(size_t) flashing]->getBounds().toFloat().expanded(3.0f);
+    g.setColour(colours::ledGreen.withAlpha(0.9f * (float) flashTicks / 30.0f));
+    g.drawRoundedRectangle(r, 5.0f, 3.0f);
 }
 
 int RackView::preferredHeight() const
@@ -320,6 +354,8 @@ void RackView::tick(bool blinkPhase)
     mz808.tick(blinkPhase);
     mz909.tick(blinkPhase);
     mz950.tick(blinkPhase);
+
+    if (flashTicks > 0 && --flashTicks >= 0) repaint();
 }
 
 void RackView::refresh()
@@ -329,6 +365,10 @@ void RackView::refresh()
     mz808.refresh();
     mz909.refresh();
     mz950.refresh();
+
+    mz303.setFolded(processor.folded[Rack::M303]);
+    mz101.setFolded(processor.folded[Rack::M101]);
+    mz950.setFolded(processor.folded[Rack::M950]);
 }
 
 void RackView::resized()
@@ -385,6 +425,9 @@ MainPanel::MainPanel(DebirthProcessor& p)
     addAndMakeVisible(viewport);
     addChildComponent(arrangeView);
 
+    rack.onHeightChanged = [this] { resized(); };
+    arrangeView.onShowMachine = [this] (int machine) { showMachine(machine); };
+
     rackTab.setTooltip("The rack: the machines' panels, their patterns and the mixer (F1).");
     arrangeTab.setTooltip("The Arrange window: the song, its tracks and parts, as Cubase laid them out (F2).");
     rackTab.onPress = [this] { showView((int) DebirthProcessor::View::Rack); };
@@ -416,6 +459,15 @@ void MainPanel::showView(int v)
     rackTab.setLit(! arranging);
     arrangeTab.setLit(arranging);
     if (isShowing()) grabKeyboardFocus();
+}
+
+// From a track's RACK in the Arrange window: the rack, scrolled to that machine, which rings
+// for a moment so the eye finds it.
+void MainPanel::showMachine(int machine)
+{
+    showView((int) DebirthProcessor::View::Rack);
+    viewport.setViewPosition(0, juce::jmax(0, rack.unitTop(machine) - gap));
+    rack.flash(machine);
 }
 
 MainPanel::~MainPanel()
@@ -450,6 +502,7 @@ void MainPanel::refresh()
     transport.refresh();
     effects.refresh();
     rack.refresh();
+    resized();   // the step rolls may have folded or unfolded with the load
     arrangeView.refresh();
     showView((int) processor.view);
 }
@@ -582,17 +635,25 @@ void MainPanel::paint(juce::Graphics& g)
 //============================================================================== DebirthEditor
 
 DebirthEditor::DebirthEditor(DebirthProcessor& p)
-    : AudioProcessorEditor(&p), panel(p)
+    : AudioProcessorEditor(&p), owner(p), panel(p)
 {
     tooltips.setLookAndFeel(&panel.getLook());
     addAndMakeVisible(panel);
     panel.setBounds(0, 0, MainPanel::designWidth, MainPanel::designHeight);
 
+    //
+    // The width scales the panel, as it always has; the height is free. A taller window is a
+    // taller panel - more of the rack, or of the song, to see at once - rather than a bigger
+    // one. Never under 800, where the rack would be left a sliver.
+    //
+    // Read before the limits go on: setting them resizes the window to fit them, and resized()
+    // would write that over the size the app was left at.
+    const int w = p.windowWidth > 0 ? p.windowWidth : MainPanel::designWidth;
+    const int h = p.windowHeight > 0 ? p.windowHeight : MainPanel::designHeight;
+
     setResizable(true, true);
-    setResizeLimits(MainPanel::designWidth / 2, MainPanel::designHeight / 2,
-                    MainPanel::designWidth * 2, MainPanel::designHeight * 2);
-    getConstrainer()->setFixedAspectRatio((double) MainPanel::designWidth / MainPanel::designHeight);
-    setSize(MainPanel::designWidth, MainPanel::designHeight);
+    setResizeLimits(MainPanel::designWidth / 2, minHeight, MainPanel::designWidth * 2, 4000);
+    setSize(juce::jlimit(MainPanel::designWidth / 2, MainPanel::designWidth * 2, w), juce::jmax(minHeight, h));
 }
 
 void DebirthEditor::paint(juce::Graphics& g)
@@ -602,5 +663,11 @@ void DebirthEditor::paint(juce::Graphics& g)
 
 void DebirthEditor::resized()
 {
-    panel.setTransform(juce::AffineTransform::scale((float) getWidth() / (float) MainPanel::designWidth));
+    // scaled to the width; as tall, at that scale, as the window is
+    const float scale = (float) getWidth() / (float) MainPanel::designWidth;
+    panel.setBounds(0, 0, MainPanel::designWidth, juce::roundToInt((float) getHeight() / scale));
+    panel.setTransform(juce::AffineTransform::scale(scale));
+
+    owner.windowWidth = getWidth();
+    owner.windowHeight = getHeight();
 }

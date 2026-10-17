@@ -55,6 +55,11 @@ void Pad::paint(juce::Graphics& g)
     g.setGradientFill(juce::ColourGradient(face.brighter(pressed ? 0.0f : 0.15f), r.getX(), r.getY(),
                                            face.darker(0.3f), r.getX(), r.getBottom(), false));
     g.fillRoundedRectangle(r, 3.0f);
+    if (litFace && lit)   // too small a pad for an LED: lit, it glows instead
+    {
+        g.setColour(led.withAlpha(0.65f));
+        g.fillRoundedRectangle(r, 3.0f);
+    }
     g.setColour(marked ? colours::light : juce::Colours::black.withAlpha(0.7f));
     g.drawRoundedRectangle(r, 3.0f, marked ? 1.8f : 1.0f);
 
@@ -262,6 +267,51 @@ void LedNumber::paint(juce::Graphics& g)
     g.drawText(text(shown ? shown() : get()), r.reduced(4.0f, 0.0f), juce::Justification::centredRight);
 }
 
+//============================================================================== FoldBar
+
+FoldBar::FoldBar()
+{
+    setMouseCursor(juce::MouseCursor::PointingHandCursor);
+    setOpen(true);
+}
+
+void FoldBar::setOpen(bool b)
+{
+    open = b;
+    setTooltip(open ? "Fold the step sequencer away, to see more of the rack at once."
+                    : "Unfold the step sequencer.");
+    repaint();
+}
+
+void FoldBar::mouseDown(const juce::MouseEvent& e)
+{
+    if (e.mods.isPopupMenu()) return;
+    setOpen(! open);
+    if (onToggle) onToggle();
+}
+
+void FoldBar::paint(juce::Graphics& g)
+{
+    const auto r = getLocalBounds().toFloat();
+    const float cy = r.getCentreY();
+
+    // the triangle: down when open, right when folded
+    juce::Path p;
+    if (open) p.addTriangle(4.0f, cy - 3.0f, 12.0f, cy - 3.0f, 8.0f, cy + 3.0f);
+    else      p.addTriangle(5.0f, cy - 4.0f, 5.0f, cy + 4.0f, 11.0f, cy);
+    g.setColour(ink);
+    g.fillPath(p);
+
+    g.setFont(fonts::bold(9.0f));
+    const juce::String text = open ? "STEP SEQUENCER" : "STEP SEQUENCER  (FOLDED)";
+    g.drawText(text, r.withTrimmedLeft(18.0f), juce::Justification::centredLeft);
+
+    // a rule on from the text, to the end
+    const float from = 18.0f + juce::GlyphArrangement::getStringWidth(g.getCurrentFont(), text) + 8.0f;
+    g.setColour(ink.withAlpha(0.35f));
+    g.fillRect(from, cy, r.getRight() - from, 1.0f);
+}
+
 //============================================================================== PatternPanel
 
 PatternPanel::PatternPanel(debirth::TrackBase& t, std::function<bool()> p)
@@ -336,8 +386,45 @@ void PatternPanel::tick(bool blinkPhase)
     steps->repaint();
 }
 
+void PatternPanel::setCompact(bool c)
+{
+    if (c == compact) return;
+    compact = c;
+    resized();
+    repaint();
+}
+
 void PatternPanel::resized()
 {
+    if (compact)
+    {
+        auto r = getLocalBounds().reduced(6);
+        const int w = r.getWidth() / 4;
+        for (int row = 0; row < 2; ++row)
+        {
+            auto line = r.removeFromTop(20);
+            for (int i = 0; i < 4; ++i)
+                numbers[row * 4 + i].setBounds(line.getX() + i * w, line.getY(), w, 20);
+            r.removeFromTop(2);
+        }
+
+        r.removeFromTop(2);
+        auto line = r.removeFromTop(20);
+        for (int b = 0; b < debirth::banks; ++b)
+            bankPads[b].setBounds(line.removeFromLeft(26));
+        steps->setBounds(line.removeFromRight(40));
+
+        r.removeFromTop(4);
+        line = r.removeFromTop(20);
+        shuffle.setBounds(line.removeFromLeft(56));
+        line.removeFromLeft(2);
+        const int e = line.getWidth() / 3;
+        copy.setBounds(line.removeFromLeft(e));
+        paste.setBounds(line.removeFromLeft(e));
+        clear.setBounds(line);
+        return;
+    }
+
     auto r = getLocalBounds().reduced(8);
     r.removeFromTop(16);
 
@@ -368,6 +455,7 @@ void PatternPanel::resized()
 void PatternPanel::paint(juce::Graphics& g)
 {
     drawFace(g, getLocalBounds().toFloat(), colours::metal);
+    if (compact) return;   // the pads say what they are; there is no room to say it twice
 
     auto r = getLocalBounds().reduced(8);
     g.setColour(colours::light);
@@ -380,6 +468,90 @@ void PatternPanel::paint(juce::Graphics& g)
     g.drawText("BANK", r.removeFromTop(12), juce::Justification::bottomLeft);
     r.removeFromTop(26);
     g.drawText("STEPS", r.removeFromTop(12), juce::Justification::bottomLeft);
+}
+
+//============================================================================== LevelMeter
+
+namespace
+{
+    constexpr float meterFloor = -48.0f, meterTop = 6.0f;
+    constexpr float fallPerTick = 24.0f / 30.0f;   // dB a second, at the panel's 30 a second
+    constexpr int holdTicks = 30;                  // a second
+
+    float meterFraction(float db) { return juce::jlimit(0.0f, 1.0f, (db - meterFloor) / (meterTop - meterFloor)); }
+}
+
+LevelMeter::LevelMeter()
+{
+    setInterceptsMouseClicks(false, false);
+}
+
+void LevelMeter::push(float peakL, float peakR)
+{
+    bool changed = false;
+    const float peaks[2] = { peakL, peakR };
+    for (int i = 0; i < 2; ++i)
+    {
+        auto& b = bars[i];
+        const float db = juce::Decibels::gainToDecibels(peaks[i], -100.0f);
+        const float level = std::max(db, b.level - fallPerTick);
+
+        if (db >= b.held)            { b.held = db; b.holdFor = holdTicks; }
+        else if (--b.holdFor <= 0)   { b.held = level; }
+
+        changed |= std::abs(level - b.level) > 0.05f || b.holdFor == holdTicks;
+        b.level = level;
+    }
+    if (changed) repaint();
+}
+
+void LevelMeter::paint(juce::Graphics& g)
+{
+    const auto area = getLocalBounds().toFloat();
+    g.setColour(juce::Colour(0xff0d0e10));
+    g.fillRoundedRectangle(area, 1.5f);
+
+    // the two bars, along the meter: side by side standing up, one over the other lying down
+    for (int i = 0; i < 2; ++i)
+    {
+        auto bar = vertical ? area.reduced(1.0f).withWidth((area.getWidth() - 3.0f) / 2.0f).translated(i * (area.getWidth() - 1.0f) / 2.0f, 0.0f)
+                            : area.reduced(1.0f).withHeight((area.getHeight() - 3.0f) / 2.0f).translated(0.0f, i * (area.getHeight() - 1.0f) / 2.0f);
+        const float length = vertical ? bar.getHeight() : bar.getWidth();
+
+        // the part of the bar between two levels, from the quiet end
+        auto span = [&] (float from, float to)
+        {
+            const float a = meterFraction(from) * length, b = meterFraction(to) * length;
+            return vertical ? juce::Rectangle<float>(bar.getX(), bar.getBottom() - b, bar.getWidth(), b - a)
+                            : juce::Rectangle<float>(bar.getX() + a, bar.getY(), b - a, bar.getHeight());
+        };
+
+        const struct { float from, to; juce::Colour colour; } zones[] = {
+            { meterFloor, -12.0f, colours::ledGreen },
+            { -12.0f, 0.0f, colours::stepYellow },
+            { 0.0f, meterTop, colours::ledRed },
+        };
+        const float level = bars[i].level;
+        for (const auto& z : zones)
+        {
+            g.setColour(z.colour.withAlpha(0.12f));   // unlit, there to read the scale by
+            g.fillRect(span(z.from, z.to));
+            if (level > z.from)
+            {
+                g.setColour(z.colour);
+                g.fillRect(span(z.from, std::min(level, z.to)));
+            }
+        }
+
+        // the peak, held
+        if (bars[i].held > meterFloor)
+        {
+            const float held = std::min(bars[i].held, meterTop);
+            g.setColour(held >= 0.0f ? colours::ledRed : colours::light);
+            const auto line = span(held - 0.8f, held);
+            g.fillRect(line);
+        }
+    }
 }
 
 //============================================================================== MixerStrip
@@ -430,6 +602,9 @@ MixerStrip::MixerStrip(debirth::Channel& c, const juce::String& n)
     fader.setColour(juce::Slider::thumbColourId, colours::light);
     fader.onValueChange = [this] { channel.level = (float) fader.getValue(); };
     addAndMakeVisible(fader);
+    meter.setTooltip("What this channel puts into the output, left and right - after its fader, pan and "
+                     "the MASTER. Red: this machine alone would take the output over full scale.");
+    addAndMakeVisible(meter);
 
     mute.setLedColour(colours::stepYellow);
     mute.onPress = [this] { channel.mute = ! channel.mute.load(); mute.setLit(channel.mute.load()); };
@@ -449,10 +624,52 @@ void MixerStrip::refresh()
     comp.setLit(channel.comp.load());
 }
 
+void MixerStrip::setCompact(bool c)
+{
+    if (c == compact) return;
+    compact = c;
+
+    // too narrow for the words and an LED: a letter each, and the face glows when on
+    const std::pair<Pad*, const char*> pads[] = { { &dist, "DIST" }, { &pcf, "PCF" }, { &comp, "COMP" }, { &mute, "MUTE" } };
+    for (auto [pad, word] : pads)
+    {
+        pad->setText(c ? juce::String::charToString(word[0]) : juce::String(word));
+        pad->setShowsLed(! c);
+        pad->setLitFace(c);
+    }
+    fader.setSliderStyle(c ? juce::Slider::LinearHorizontal : juce::Slider::LinearVertical);
+    meter.setVertical(! c);
+
+    resized();
+    repaint();
+}
+
 void MixerStrip::resized()
 {
     auto r = getLocalBounds().reduced(6);
     r.removeFromTop(18);
+
+    if (compact)
+    {
+        auto knobs = r.removeFromTop(40);
+        pan.setBounds(knobs.removeFromLeft(knobs.getWidth() / 2));
+        delay.setBounds(knobs);
+
+        r.removeFromTop(3);
+        auto keys = r.removeFromTop(16);
+        const int w = keys.getWidth() / 4;
+        for (auto* p : { &dist, &pcf, &comp })
+            p->setBounds(keys.removeFromLeft(w));
+        mute.setBounds(keys);
+
+        // under the keys, wherever the strip ends - beside a tall folded machine, a fader
+        // floating in the middle of nothing reads as something else - and the meter under it
+        r.removeFromTop(3);
+        fader.setBounds(r.removeFromTop(16).reduced(4, 0));
+        r.removeFromTop(3);
+        meter.setBounds(r.removeFromTop(5).reduced(4, 0));
+        return;
+    }
 
     auto knobs = r.removeFromTop(46);
     pan.setBounds(knobs.removeFromLeft(knobs.getWidth() / 2));
@@ -467,7 +684,16 @@ void MixerStrip::resized()
 
     mute.setBounds(r.removeFromBottom(24));
     r.removeFromBottom(4);
+
+    // the meter down the right, the fader in what is left: its marks reach 15 either side
+    meter.setBounds(r.removeFromRight(8));
+    r.removeFromRight(2);
     fader.setBounds(r.withSizeKeepingCentre(36, r.getHeight()));
+}
+
+void MixerStrip::tick()
+{
+    meter.push(channel.peakL.exchange(0.0f), channel.peakR.exchange(0.0f));
 }
 
 void MixerStrip::paint(juce::Graphics& g)

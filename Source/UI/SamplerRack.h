@@ -58,7 +58,19 @@ public:
 
     void tick(bool blinkPhase);
     void refresh();
-    int preferredHeight() const { return 8 + 30 + 28 + 8 + 64 + 8 + 12 + 26 * 10 + 10; }
+
+    // the name, the disk row, the knobs, the fold bar and the roll - or folded, no roll; the
+    // bar stays where it is either way
+    int preferredHeight() const
+    {
+        const int top = 8 + 30 + 28 + 8 + 64 + 8 + FoldBar::height;
+        return isFolded() ? juce::jmax(foldedMinimum, top + 8) : top + 2 + 12 + 26 * 10 + 10;
+    }
+
+    // the step roll folded away, and told of when its bar is clicked - the height changes
+    void setFolded(bool);
+    bool isFolded() const { return ! fold.isOpen(); }
+    std::function<void()> onFold;
 
     void paint(juce::Graphics&) override;
     void resized() override;
@@ -76,6 +88,7 @@ private:
     juce::ComboBox programBox;
     Pad octaveDown { "OCT -" }, octaveUp { "OCT +" };
     std::vector<std::unique_ptr<juce::Component>> controls;
+    FoldBar fold;
     SampleRoll roll;
     MixerStrip strip;
 

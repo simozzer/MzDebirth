@@ -256,6 +256,9 @@ SamplerRack::SamplerRack(Mz950& s, Channel& c, std::function<bool()> p, const Th
         addAndMakeVisible(*controls.back());
     }
 
+    fold.setInk(t.ink);
+    fold.onToggle = [this] { roll.setVisible(fold.isOpen()); if (onFold) onFold(); };
+    addAndMakeVisible(fold);
     addAndMakeVisible(roll);
     addAndMakeVisible(strip);
     showDisk();
@@ -311,13 +314,18 @@ void SamplerRack::refresh()
 void SamplerRack::tick(bool blinkPhase)
 {
     patterns.tick(blinkPhase);
+    strip.tick();
     roll.tick(playing());
 }
 
 void SamplerRack::resized()
 {
+    const bool folded = isFolded();
+    patterns.setCompact(folded);
+    strip.setCompact(folded);
+
     auto r = getLocalBounds();
-    patterns.setBounds(r.removeFromLeft(168).withHeight(juce::jmin(getHeight(), 212)));
+    patterns.setBounds(r.removeFromLeft(168).withHeight(folded ? getHeight() : juce::jmin(getHeight(), PatternPanel::height)));
     r.removeFromLeft(6);
     strip.setBounds(r.removeFromRight(84));
     r.removeFromRight(6);
@@ -342,8 +350,19 @@ void SamplerRack::resized()
     for (auto& c : controls)
         c->setBounds(knobs.removeFromLeft(w));
 
+    // the bar under the knobs, open or folded - it never moves; only the roll comes and goes
     inner.removeFromTop(8);
+    fold.setBounds(inner.removeFromTop(FoldBar::height));
+    if (folded) return;
+    inner.removeFromTop(2);
     roll.setBounds(inner);
+}
+
+void SamplerRack::setFolded(bool f)
+{
+    if (f == isFolded()) return;
+    fold.setOpen(! f);
+    roll.setVisible(! f);
 }
 
 void SamplerRack::paint(juce::Graphics& g)
