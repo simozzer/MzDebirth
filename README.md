@@ -19,9 +19,9 @@ too.
 
 Download **MzDebirth-*version*-win64-Setup.exe** from the
 [releases page](https://github.com/simozzer/MzDebirth/releases) and run it. It installs the
-app, a Start menu entry, an uninstaller, and the Mz950's six sample disks; installing for
-just yourself needs no administrator rights. The **win64.zip** beside it is the same, to run
-without installing - keep the `disks` folder next to `MzDebirth.exe`.
+app, a Start menu entry, an uninstaller, and the Mz950's seven sample disks, a piano among
+them; installing for just yourself needs no administrator rights. The **win64.zip** beside
+it is the same, to run without installing - keep the `disks` folder next to `MzDebirth.exe`.
 
 Windows 10 or 11, 64-bit. The app is not code-signed, so Windows may warn about an unknown
 publisher: choose **More info**, then **Run anyway**.
