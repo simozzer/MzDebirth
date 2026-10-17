@@ -58,6 +58,7 @@ add_subdirectory("${JUCE_PATH}" JUCE)
 set(MZ950_ENGINE "${MZ950_PATH}/Plugin/Source/S950")
 
 set(CORE_SOURCES
+    Source/Core/DemoSong.cpp
     Source/Core/Effects.cpp
     Source/Core/Grooves.cpp
     Source/Core/Key.cpp

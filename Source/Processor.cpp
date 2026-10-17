@@ -2,6 +2,7 @@
 // Free software under the GNU AGPL v3; see LICENSE.
 
 #include "Processor.h"
+#include "Core/DemoSong.h"
 #include "Core/Grooves.h"
 #include "UI/MainPanel.h"
 
@@ -495,10 +496,21 @@ void DebirthProcessor::startAfresh(bool factoryGrooves)
         rack.channel[m].delay = 0.0f;
     }
 
-    if (factoryGrooves) writeFactoryGrooves();
-
-    song.replace(defaultSong());
-    rack.mode = Mode::Pattern;
+    // With the factory grooves comes the demo song made from them, ready to play in the
+    // Arrange window; an empty rack starts with an empty song, and its patterns.
+    if (factoryGrooves)
+    {
+        writeFactoryGrooves();
+        rack.tempo = demoTempo;
+        song.replace(demoSong(rack));
+        rack.mode = Mode::Song;
+        view = View::Arrange;
+    }
+    else
+    {
+        song.replace(defaultSong());
+        rack.mode = Mode::Pattern;
+    }
 
     ++loads;
 }

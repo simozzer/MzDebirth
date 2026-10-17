@@ -29,14 +29,17 @@ publisher: choose **More info**, then **Run anyway**.
 ## Getting started
 
 - **Options** (top left) picks the audio output.
-- **PLAY**, or the space bar. The rack opens with the factory grooves, and every machine
-  plays pattern A1.
+- **PLAY**, or the space bar. A new rack opens on the **demo song** - an acid rave tune made
+  from the factory grooves, two minutes of intro, builds, drops and a breakdown - in the
+  Arrange window. Turn **SONG MODE** off and every machine plays its own pattern, A1 to
+  start with.
 - Pick another pattern on each machine's **PATTERN** pads - bank A to D, then 1 to 8. Picked
   while playing, it blinks, and starts when the pattern playing comes round. The factory
   banks are written so that pattern *n* of every machine plays with pattern *n* of the others:
   **A** acid house, **B** techno, **C** electro, **D** deep house; in each, 1-3, 6 and 7 are
   grooves, 4 and 8 fills, and 5 a breakdown.
-- **NEW** brings the factory grooves back, or clears the rack to write your own.
+- **NEW** brings the factory grooves and the demo song back, or clears the rack to write
+  your own.
 - **SAVE** and **LOAD** keep whole racks - patterns, knobs, mixer, effects and the song - in
   `.mzdebirth` files. The app also remembers where it was left.
 - **RACK** and **ARRANGE** (or F1 and F2), under the effects, switch between the rack and
@@ -49,7 +52,15 @@ a track for each machine down the left, and on each track *parts* - notes of any
 any position, not 16-step patterns. The rack is still a click away, for the sound: every
 knob, fader and effect plays the song as it plays the patterns.
 
-![The Arrange window: tracks, parts, the ruler with the cycle, and the transport](docs/img/arrange.png)
+![The Arrange window with the demo song: the rolls and risers building to each drop, and the breakdown between](docs/img/arrange.png)
+
+The **demo song** a new rack opens with shows the way: bank A's grooves laid out over 64
+bars at 132 bpm, with parts written for it. In each build the kick drops away, a 909 snare
+roll speeds up from quarters to 32nds, and a 101 riser climbs C minor. Each build cuts out a
+beat before the drop, which lands with a crash. The breakdown holds the 101 long over the
+chords, gliding between them. Its tracks show the other way to use them, too: two for the
+909 (the *Tops*, and the *Rolls & FX*) and two for the 101 (the *Lead*, and the
+*Riser & Pad*).
 
 - **SONG MODE** (beside the tabs) chooses what plays the machines: the song, or - off, as
   ReBirth's PATTERN mode - their patterns. Changed while playing, it waits for the bar.
@@ -182,7 +193,9 @@ The check (`Tests/SeqCheck.cpp`) holds the sequencer to its timing, slides and p
 changes, checks each effect and every factory groove, generates in all 24 keys, and plays
 each machine, before the app is built round it. It also holds the song to its sample: every
 factory groove made into parts must play bit for bit as its patterns do, and the cycle,
-STOP, undo, and a song edited while it plays are each checked. It links no JUCE. Without the disks it skips
+STOP, undo, and a song edited while it plays are each checked. The demo song is played
+through and held to its shape: drops louder than the intro and the breakdown, and a beat of
+near silence before each. It links no JUCE. Without the disks it skips
 the Mz950's checks and says so; `-Release` will not go on without them.
 
 Pushing a version tag (`git push origin v0.3.0`) builds the installer and zip on GitHub -
@@ -196,7 +209,8 @@ cmake.
 ## Layout
 
     Source/Core         the clock, patterns, machines, effects, mixer, keys and grooves - no JUCE
-                        Song.* and SongPlayer.h: the song, and how the audio thread plays it
+                        Song.* and SongPlayer.h: the song, and how the audio thread plays it;
+                        DemoSong.*: the demo song
     Source/UI           the panels
     Source/UI/Arrange   the Arrange window, and KEY EDIT and DRUM EDIT
     Source/Processor.*  the rack as a JUCE processor, and its saved state

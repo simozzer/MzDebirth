@@ -9,6 +9,7 @@
 // the rack's output stays sane. Links no JUCE.
 //
 
+#include "Core/DemoSong.h"
 #include "Core/Grooves.h"
 #include "Core/Rack.h"
 
@@ -899,8 +900,90 @@ void song()
     }
 }
 
+//
+// The demo song a new rack opens with, played through: it must stay sane, and have the shape
+// of a rave tune - the drops louder than the intro and the breakdown, and a beat of near
+// silence before each drop lands.
+//
+void demo()
+{
+    std::printf("\nthe demo song\n");
+
+    Rack r;
+#ifdef MZ950_DISKS
+    std::string error;
+    const bool kit = r.mz950.loadDisk(std::string(MZ950_DISKS) + "/DRUMS.hfe", error);
+#else
+    const bool kit = false;
+#endif
+    r.prepare(48000, 512);
+    writeGrooves(r);
+    if (kit) { r.mz950.selectProgram(0); writeSamplerGrooves(r.mz950); r.mz950.service(); }
+    r.tempo = demoTempo;
+    r.mode = Mode::Song;
+
+    const Song s = demoSong(r);
+    int empty = 0;
+    for (const auto& t : s.tracks) empty += t.parts.empty() && (t.machine != Rack::M950 || kit) ? 1 : 0;
+    check(empty == 0 && s.end() == 64 * ticksPerBar, "sixty-four bars, every track playing",
+          fmt("%zu tracks, %d empty, %d bars", s.tracks.size(), empty, s.end() / ticksPerBar));
+
+    publish(r, s);
+    r.playing = true;
+
+    // the level of every beat, as RMS
+    const double perBeat = 48000.0 * 60.0 / demoTempo;
+    const int beats = 64 * 4;
+    std::vector<double> energy((size_t) beats, 0.0), count((size_t) beats, 0.0);
+    std::vector<float> l(512), rr(512);
+    bool finite = true;
+    float peak = 0;
+    for (int64_t done = 0; done < (int64_t) (perBeat * beats); done += 512)
+    {
+        r.render(l.data(), rr.data(), 512);
+        for (int i = 0; i < 512; ++i)
+        {
+            const int b = (int) ((double) (done + i) / perBeat);
+            if (b >= beats) break;
+            finite &= std::isfinite(l[(size_t) i]) && std::isfinite(rr[(size_t) i]);
+            peak = std::fmax(peak, std::fmax(std::fabs(l[(size_t) i]), std::fabs(rr[(size_t) i])));
+            energy[(size_t) b] += (double) l[(size_t) i] * l[(size_t) i] + (double) rr[(size_t) i] * rr[(size_t) i];
+            count[(size_t) b] += 2.0;
+        }
+    }
+    for (size_t b = 0; b < energy.size(); ++b) energy[b] = std::sqrt(energy[b] / std::max(1.0, count[b]));
+
+    // the mean level over bars [from, to)
+    auto level = [&] (int from, int to)
+    {
+        double sum = 0;
+        for (int b = from * 4; b < to * 4; ++b) sum += energy[(size_t) b];
+        return sum / (double) ((to - from) * 4);
+    };
+
+    std::printf("      bars:");
+    for (int b = 0; b < 64; b += 4) std::printf(" %5d", b + 1);
+    std::printf("\n     level:");
+    for (int b = 0; b < 64; b += 4) std::printf(" %5.3f", level(b, b + 4));
+    std::printf("\n");
+
+    const double intro = level(0, 4), drop1 = level(28, 36), breakdown = level(36, 40), drop2 = level(48, 60);
+    check(finite && peak < 4.0f, "two minutes of it stay finite and sane", fmt("peak %.2f", peak));
+    check(drop1 > intro * 1.5 && drop2 > intro * 1.5, "the drops are louder than the intro",
+          fmt("%.3f and %.3f against %.3f", drop1, drop2, intro));
+    check(drop1 > breakdown * 1.5 && drop2 > breakdown * 1.5, "and than the breakdown",
+          fmt("%.3f and %.3f against %.3f", drop1, drop2, breakdown));
+
+    // the beat before each drop: the builds cut out, and only the echoes ring on
+    const double gap1 = energy[28 * 4 - 1], gap2 = energy[48 * 4 - 1];
+    const double before1 = energy[28 * 4 - 2], before2 = energy[48 * 4 - 2];
+    check(gap1 < before1 * 0.5 && gap2 < before2 * 0.5, "a beat of near silence before each drop",
+          fmt("%.3f after %.3f, %.3f after %.3f", gap1, before1, gap2, before2));
+}
+
 int main()
 {
+    demo();
     song();
     keys();
     grooves();

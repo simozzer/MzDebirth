@@ -227,6 +227,12 @@ void ArrangeView::refresh()
     state.selection.clear();
     state.scrollTick = 0.0;
     state.scrollY = 0;
+
+    // the whole song in view, as far as it will go and still be read
+    const int end = state.song().end();
+    if (end > 0 && lane.getWidth() > 0)
+        state.pxPerTick = juce::jlimit(12.0 / ticksPerBar, 64.0 / ticksPerBar,
+                                       lane.getWidth() / (double) (end + ticksPerBar));
     update();
 }
 
