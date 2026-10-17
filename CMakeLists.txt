@@ -97,7 +97,7 @@ set(CORE_DEFINITIONS "MZ950_DISKS=\"${MZ950_PATH}/disks\"")
 #
 juce_add_plugin(MzDebirth
     COMPANY_NAME                "simozzer"
-    COMPANY_COPYRIGHT           "Copyright (C) 2026 Simon Moscrop"
+    COMPANY_COPYRIGHT           "Created by Simon Moscrop"
     PRODUCT_NAME                "MzDebirth"
     PLUGIN_MANUFACTURER_CODE    Smoz          # never change - see above
     PLUGIN_CODE                 Dbr1          # never change - see above

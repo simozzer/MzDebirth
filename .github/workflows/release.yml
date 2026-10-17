@@ -1,5 +1,5 @@
 #
-# MzDebirth - Copyright (C) 2026 Simon Moscrop
+# MzDebirth - Created by Simon Moscrop
 #
 # Build every release's downloads on GitHub and attach them to it, so a release never goes
 # out without its installer.

@@ -240,7 +240,7 @@ cmake.
 
 ## Licence
 
-Copyright (C) 2026 Simon Moscrop.
+Created by Simon Moscrop.
 
 Free software under the GNU AGPL v3, as the synths it plays; see LICENSE.
 

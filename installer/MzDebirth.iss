@@ -1,5 +1,5 @@
 ;
-; MzDebirth - Copyright (C) 2026 Simon Moscrop
+; MzDebirth - Created by Simon Moscrop
 ; Free software under the GNU AGPL v3; see LICENSE.
 ;
 ; The Windows installer: the standalone app, and the sample disks the Mz950 opens with.
@@ -34,9 +34,9 @@ AppPublisher=Simon Moscrop
 AppPublisherURL=https://github.com/simozzer/MzDebirth
 AppSupportURL=https://github.com/simozzer/MzDebirth/issues
 AppUpdatesURL=https://github.com/simozzer/MzDebirth/releases
-AppCopyright=Copyright (C) 2026 Simon Moscrop
+AppCopyright=Created by Simon Moscrop
 VersionInfoVersion={#AppVersion}
-VersionInfoCopyright=Copyright (C) 2026 Simon Moscrop
+VersionInfoCopyright=Created by Simon Moscrop
 VersionInfoCompany=Simon Moscrop
 
 DefaultDirName={autopf}\MzDebirth

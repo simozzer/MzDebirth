@@ -1,4 +1,4 @@
-// MzDebirth - Copyright (C) 2026 Simon Moscrop
+// MzDebirth - Created by Simon Moscrop
 // Free software under the GNU AGPL v3; see LICENSE.
 
 #include "MainPanel.h"
@@ -167,7 +167,7 @@ void TransportBar::paint(juce::Graphics& g)
     g.drawText("MzDebirth", name.withTrimmedBottom(10), juce::Justification::centredLeft);
     g.setColour(colours::light.withAlpha(0.55f));
     g.setFont(fonts::bold(9.0f));
-    g.drawText(juce::String::fromUTF8("Copyright \xc2\xa9 2026 Simon Moscrop"), name.removeFromBottom(11),
+    g.drawText(juce::String("Created by Simon Moscrop"), name.removeFromBottom(11),
                juce::Justification::bottomLeft);
 
     g.setColour(colours::light.withAlpha(0.75f));
