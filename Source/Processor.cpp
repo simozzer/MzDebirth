@@ -345,7 +345,7 @@ juce::ValueTree DebirthProcessor::save() const
 {
     juce::ValueTree root("MzDebirth");
     root.setProperty("version", 3, nullptr);
-    root.setProperty("tempo", rack.tempo.load(), nullptr);
+    root.setProperty("tempo", std::round(rack.tempo.load() * 10.0) / 10.0, nullptr);   // 128.3, not 128.30000305
     root.setProperty("shuffle", rack.shuffle.load(), nullptr);
     root.setProperty("master", rack.master.load(), nullptr);
     root.setProperty("key", juce::String(Key::fromIndex(rack.key.load()).code()), nullptr);

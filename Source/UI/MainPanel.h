@@ -12,8 +12,9 @@
 #include "Processor.h"
 
 //
-// Along the top: PLAY and STOP, the tempo, the shuffle, the master level, and the files.
-// The space bar plays and stops too.
+// Along the top: PLAY and STOP, the tempo with DRAG and PUSH beside it, the shuffle, the
+// master level, and the files. The space bar plays and stops too, and the left and right
+// arrow keys drag and push while they are held.
 //
 class TransportBar final : public juce::Component
 {
@@ -23,16 +24,23 @@ public:
     void tick();
     void refresh();
 
+    // the arrow keys' share of the nudge: -1 left held, +1 right, 0 neither or both
+    void setKeyNudge(int dir);
+
     std::function<void()> onNew, onLoad, onSave;
 
     void paint(juce::Graphics&) override;
     void resized() override;
 
 private:
+    void nudge();
+
     DebirthProcessor& processor;
 
     Pad play { "PLAY" }, stop { "STOP" };
     LedNumber tempo;
+    Pad drag, push;
+    int padNudge = 0, keyNudge = 0;
     Knob shuffle, master;
     KeyPanel keyPanel;
     Pad fresh { "NEW" }, open { "LOAD" }, save { "SAVE" };
@@ -79,6 +87,8 @@ public:
     void paint(juce::Graphics&) override;
     void resized() override;
     bool keyPressed(const juce::KeyPress&) override;
+    bool keyStateChanged(bool isKeyDown) override;
+    void focusLost(FocusChangeType) override;
 
     Look& getLook() { return look; }
 

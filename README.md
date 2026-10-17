@@ -38,6 +38,12 @@ publisher: choose **More info**, then **Run anyway**.
   banks are written so that pattern *n* of every machine plays with pattern *n* of the others:
   **A** acid house, **B** techno, **C** electro, **D** deep house; in each, 1-3, 6 and 7 are
   grooves, 4 and 8 fills, and 5 a breakdown.
+- **TEMPO** is to a tenth of a beat a minute: drag it or use the wheel for whole beats, with
+  **Shift** held for tenths, and double-click for 120.
+- **DRAG** and **PUSH**, beside it, work like the pitch bend on a CD deck, for playing the rack
+  in time with a record. Held, they slow the rack or hurry it - 3% at once, building to 10%
+  over two seconds - and let go, it is back on its tempo with the beat moved. The tempo shows
+  the bent figure while one is held. The **left and right arrow keys** do the same.
 - **NEW** brings the factory grooves and the demo song back, or clears the rack to write
   your own.
 - **SAVE** and **LOAD** keep whole racks - patterns, knobs, mixer, effects and the song - in

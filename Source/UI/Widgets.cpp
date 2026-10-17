@@ -41,8 +41,10 @@ void Pad::mouseDown(const juce::MouseEvent& e)
 
 void Pad::mouseUp(const juce::MouseEvent&)
 {
+    const bool was = pressed;
     pressed = false;
     repaint();
+    if (was && onRelease) onRelease();
 }
 
 void Pad::paint(juce::Graphics& g)
@@ -76,7 +78,17 @@ void Pad::paint(juce::Graphics& g)
         else      inside.removeFromLeft(9.0f);
     }
 
-    if (text.isNotEmpty())
+    if (arrow != 0)
+    {
+        // drawn, not a glyph: the fonts that have the triangles do not agree on their size
+        const auto c = inside.getCentre();
+        const float w = 5.0f, h = 6.0f;
+        juce::Path p;
+        p.addTriangle(c.x - w * arrow, c.y - h, c.x - w * arrow, c.y + h, c.x + w * arrow, c.y);
+        g.setColour(ink);
+        g.fillPath(p);
+    }
+    else if (text.isNotEmpty())
     {
         g.setColour(ink);
         g.setFont(fonts::bold(juce::jmin(11.0f, inside.getHeight() - 1.0f)));
@@ -183,8 +195,37 @@ void LedNumber::put(int v)
     repaint();
 }
 
-void LedNumber::mouseDown(const juce::MouseEvent&)            { dragFrom = get(); }
-void LedNumber::mouseDrag(const juce::MouseEvent& e)          { put(dragFrom - e.getDistanceFromDragStartY() / 4); }
+void LedNumber::setDecimals(int d)
+{
+    decimals = d;
+    unit = 1;
+    for (int i = 0; i < d; ++i) unit *= 10;
+    repaint();
+}
+
+// a whole unit, or with Shift held the last place
+int LedNumber::step(const juce::ModifierKeys& m) const { return m.isShiftDown() ? 1 : unit; }
+
+void LedNumber::mouseDown(const juce::MouseEvent& e)
+{
+    dragFrom = get();
+    dragBase = 0;
+    dragFine = e.mods.isShiftDown();
+}
+
+void LedNumber::mouseDrag(const juce::MouseEvent& e)
+{
+    // Shift pressed or let go mid-drag carries on from where the value is, not from the start
+    const int dy = e.getDistanceFromDragStartY();
+    if (e.mods.isShiftDown() != dragFine)
+    {
+        dragFine = e.mods.isShiftDown();
+        dragFrom = get();
+        dragBase = dy;
+    }
+    put(dragFrom - (dy - dragBase) / 4 * step(e.mods));
+}
+
 void LedNumber::mouseDoubleClick(const juce::MouseEvent&)     { put(initial); }
 
 void LedNumber::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
@@ -193,7 +234,7 @@ void LedNumber::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheel
 
     wheel += w.deltaY * 8.0f;
     const int whole = (int) wheel;
-    if (whole != 0) { wheel -= (float) whole; put(get() + whole); }
+    if (whole != 0) { wheel -= (float) whole; put(get() + whole * step(e.mods)); }
 }
 
 void LedNumber::paint(juce::Graphics& g)
@@ -206,10 +247,19 @@ void LedNumber::paint(juce::Graphics& g)
 
     const auto font = fonts::digits(r.getHeight() * 0.78f);
     g.setFont(font);
+    // with a point, the value in units and its last places: 1283 tenths is 128.3
+    auto text = [this] (int v)
+    {
+        if (decimals == 0) return juce::String(v);
+        return juce::String(v / unit) + "." + juce::String(std::abs(v % unit)).paddedLeft('0', decimals);
+    };
+    juce::String unlit = juce::String::repeatedString("8", digits - decimals);
+    if (decimals > 0) unlit << "." << juce::String::repeatedString("8", decimals);
+
     g.setColour(colours::ledOff.withAlpha(0.4f));   // the unlit segments, there but not read
-    g.drawText(juce::String::repeatedString("8", digits), r.reduced(4.0f, 0.0f), juce::Justification::centredRight);
+    g.drawText(unlit, r.reduced(4.0f, 0.0f), juce::Justification::centredRight);
     g.setColour(colours::ledRed);
-    g.drawText(juce::String(get()), r.reduced(4.0f, 0.0f), juce::Justification::centredRight);
+    g.drawText(text(shown ? shown() : get()), r.reduced(4.0f, 0.0f), juce::Justification::centredRight);
 }
 
 //============================================================================== PatternPanel

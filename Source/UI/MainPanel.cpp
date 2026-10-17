@@ -19,9 +19,9 @@ namespace
 
 TransportBar::TransportBar(DebirthProcessor& p)
     : processor(p),
-      tempo((int) Clock::minTempo, (int) Clock::maxTempo, 120, 3,
-            [&p] { return juce::roundToInt(p.rack.tempo.load()); },
-            [&p] (int v) { p.rack.tempo = (float) v; }),
+      tempo((int) Clock::minTempo * 10, (int) Clock::maxTempo * 10, 1200, 4,
+            [&p] { return juce::roundToInt(p.rack.tempo.load() * 10.0f); },
+            [&p] (int v) { p.rack.tempo = (float) v / 10.0f; }),
       shuffle("SHUFFLE", 0.0f, 1.0f, 0.0f,
               [&p] { return p.rack.shuffle.load(); }, [&p] (float v) { p.rack.shuffle = v; }),
       master("MASTER", 0.0f, 1.0f, 0.8f,
@@ -36,8 +36,31 @@ TransportBar::TransportBar(DebirthProcessor& p)
     addAndMakeVisible(play);
     addAndMakeVisible(stop);
 
-    tempo.setTooltip("Tempo, in beats a minute. Drag, or use the wheel; double-click for 120.");
+    tempo.setDecimals(1);
+    tempo.setTooltip("Tempo, in beats a minute. Drag, or use the wheel - hold Shift for tenths; "
+                     "double-click for 120.");
+    tempo.setShown([&p] { return juce::roundToInt((p.rack.nudge.load() != 0 ? p.rack.tempoNow()
+                                                                              : p.rack.tempo.load()) * 10.0f); });
     addAndMakeVisible(tempo);
+
+    //
+    // DRAG and PUSH, as on a CD deck: held, they slow the rack or hurry it, a little at once
+    // and more the longer they are held, and let it go on release - the tempo is as it was,
+    // the beat moved. The arrow keys do the same.
+    //
+    drag.setTooltip("DRAG: slows the rack while held, to pull it back into phase (or hold the left arrow key).");
+    push.setTooltip("PUSH: hurries the rack while held, to pull it forward into phase (or hold the right arrow key).");
+    drag.onPress   = [this] { padNudge = -1; nudge(); };
+    push.onPress   = [this] { padNudge = +1; nudge(); };
+    drag.onRelease = [this] { if (padNudge < 0) { padNudge = 0; nudge(); } };
+    push.onRelease = [this] { if (padNudge > 0) { padNudge = 0; nudge(); } };
+    drag.setArrow(-1);
+    push.setArrow(+1);
+    for (auto* b : { &drag, &push })
+    {
+        b->setLedColour(colours::stepOrange);
+        addAndMakeVisible(*b);
+    }
 
     shuffle.setColours(juce::Colour(0xff17181b), colours::stepOrange, colours::light);
     shuffle.setValueText([] (double v) { return juce::String(juce::roundToInt(v * 100.0)) + "%"; });
@@ -72,6 +95,28 @@ void TransportBar::tick()
     keyPanel.tick();
     stop.setLit(! playing);
     tempo.repaint();
+
+    // and an arrow key let go where it was not seen does not leave the rack bent
+    if (keyNudge != 0 && ! juce::KeyPress::isKeyCurrentlyDown(keyNudge < 0 ? juce::KeyPress::leftKey
+                                                                           : juce::KeyPress::rightKey))
+        setKeyNudge(0);
+}
+
+void TransportBar::setKeyNudge(int dir)
+{
+    if (dir == keyNudge) return;
+    keyNudge = dir;
+    nudge();
+}
+
+// the pads and the keys together; both ways at once is neither
+void TransportBar::nudge()
+{
+    const int dir = juce::jlimit(-1, 1, padNudge + keyNudge);
+    processor.rack.nudge = dir;
+    drag.setLit(dir < 0);
+    push.setLit(dir > 0);
+    tempo.repaint();
 }
 
 void TransportBar::refresh()
@@ -87,24 +132,28 @@ void TransportBar::resized()
     auto r = getLocalBounds().reduced(10, 8);
     r.removeFromLeft(200);   // the name
 
-    play.setBounds(r.removeFromLeft(64));
+    play.setBounds(r.removeFromLeft(56));
     r.removeFromLeft(6);
-    stop.setBounds(r.removeFromLeft(64));
-    r.removeFromLeft(24);
+    stop.setBounds(r.removeFromLeft(56));
+    r.removeFromLeft(16);
 
-    tempo.setBounds(r.removeFromLeft(78).withSizeKeepingCentre(78, 34).translated(0, 6));
-    r.removeFromLeft(18);
+    tempo.setBounds(r.removeFromLeft(88).withSizeKeepingCentre(88, 34).translated(0, 6));
+    r.removeFromLeft(6);
+    drag.setBounds(r.removeFromLeft(30).withSizeKeepingCentre(30, 34).translated(0, 6));
+    r.removeFromLeft(4);
+    push.setBounds(r.removeFromLeft(30).withSizeKeepingCentre(30, 34).translated(0, 6));
+    r.removeFromLeft(10);
     shuffle.setBounds(r.removeFromLeft(56));
     r.removeFromLeft(8);
     master.setBounds(r.removeFromLeft(56));
 
-    save.setBounds(r.removeFromRight(56).withSizeKeepingCentre(56, 30));
+    save.setBounds(r.removeFromRight(52).withSizeKeepingCentre(52, 30));
     r.removeFromRight(6);
-    open.setBounds(r.removeFromRight(56).withSizeKeepingCentre(56, 30));
+    open.setBounds(r.removeFromRight(52).withSizeKeepingCentre(52, 30));
     r.removeFromRight(6);
-    fresh.setBounds(r.removeFromRight(56).withSizeKeepingCentre(56, 30));
+    fresh.setBounds(r.removeFromRight(52).withSizeKeepingCentre(52, 30));
 
-    keyPanel.setBounds(r.reduced(16, 0));
+    keyPanel.setBounds(r.reduced(8, 0));
 }
 
 void TransportBar::paint(juce::Graphics& g)
@@ -124,6 +173,8 @@ void TransportBar::paint(juce::Graphics& g)
     g.setColour(colours::light.withAlpha(0.75f));
     g.setFont(fonts::bold(9.5f));
     g.drawText("TEMPO", tempo.getBounds().withY(tempo.getY() - 14).withHeight(12), juce::Justification::centredLeft);
+    g.drawText("DRAG", drag.getBounds().withY(drag.getY() - 14).withHeight(12), juce::Justification::centred);
+    g.drawText("PUSH", push.getBounds().withY(push.getY() - 14).withHeight(12), juce::Justification::centred);
 }
 
 //============================================================================== the machines' looks
@@ -413,8 +464,23 @@ bool MainPanel::keyPressed(const juce::KeyPress& k)
     if (k == juce::KeyPress::F1Key) { showView((int) DebirthProcessor::View::Rack); return true; }
     if (k == juce::KeyPress::F2Key) { showView((int) DebirthProcessor::View::Arrange); return true; }
 
+    // DRAG and PUSH work while held, which keyStateChanged follows; the presses are theirs
+    if (k.getKeyCode() == juce::KeyPress::leftKey || k.getKeyCode() == juce::KeyPress::rightKey)
+        return true;
+
     return arrangeView.isVisible() && arrangeView.handleKey(k);
 }
+
+bool MainPanel::keyStateChanged(bool)
+{
+    const bool left = juce::KeyPress::isKeyCurrentlyDown(juce::KeyPress::leftKey);
+    const bool right = juce::KeyPress::isKeyCurrentlyDown(juce::KeyPress::rightKey);
+    transport.setKeyNudge((right ? 1 : 0) - (left ? 1 : 0));
+    return false;
+}
+
+// a key let go in another window would never be seen going up
+void MainPanel::focusLost(FocusChangeType) { transport.setKeyNudge(0); }
 
 static juce::File racksFolder()
 {

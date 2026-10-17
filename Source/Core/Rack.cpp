@@ -3,6 +3,7 @@
 
 #include "Rack.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace debirth
@@ -207,6 +208,7 @@ void Rack::render(float* left, float* right, int n)
         const int chunk = beginBlock(n < blockSize ? n : blockSize);
         renderBlock(left, right, chunk);
         endBlock();
+        if (nudging != 0) nudgeHeld += chunk;
         left += chunk;
         right += chunk;
         n -= chunk;
@@ -266,7 +268,13 @@ int Rack::beginBlock(int n)
             player.setPlayback(p);
         }
 
-    clock.setTempo(tempo.load());
+    // the tempo, bent by DRAG or PUSH while one is held; a change of hand starts afresh
+    const int dir = nudge.load();
+    if (dir != nudging) { nudging = dir; nudgeHeld = 0; }
+    const double held = std::min(1.0, nudgeHeld / (nudgeRamp * clock.getRate()));
+    const double bend = nudging * (nudgeFrom + (nudgeTo - nudgeFrom) * held);
+    clock.setTempo(tempo.load() * (1.0 + (nudging != 0 ? bend : 0.0)));
+    clockTempo.store((float) clock.getTempo(), std::memory_order_relaxed);
     clock.setShuffle(shuffle.load());
 
     // the transport, as the panel last left it

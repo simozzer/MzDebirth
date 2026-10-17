@@ -12,10 +12,17 @@ namespace arrange
 
 ArrangeTransport::ArrangeTransport(State& s)
     : state(s),
-      tempo((int) Clock::minTempo, (int) Clock::maxTempo, 120, 3,
-            [&s] { return juce::roundToInt(s.processor.rack.tempo.load()); },
-            [&s] (int v) { s.processor.rack.tempo = (float) v; })
+      tempo((int) Clock::minTempo * 10, (int) Clock::maxTempo * 10, 1200, 4,
+            [&s] { return juce::roundToInt(s.processor.rack.tempo.load() * 10.0f); },
+            [&s] (int v) { s.processor.rack.tempo = (float) v / 10.0f; })
 {
+    tempo.setDecimals(1);
+    tempo.setShown([&s]
+    {
+        auto& rack = s.processor.rack;
+        return juce::roundToInt((rack.nudge.load() != 0 ? rack.tempoNow() : rack.tempo.load()) * 10.0f);
+    });
+
     start.setShowsLed(false);
     start.setTooltip("Back to the start of the song (the keypad's . key).");
     start.onPress = [this] { toStart(); };
@@ -70,7 +77,8 @@ ArrangeTransport::ArrangeTransport(State& s)
         state.doc().edit([c] (Song& song) { song.right = juce::jmax(c, song.left + 1); });
         state.repaintAll();
     };
-    tempo.setTooltip("Tempo, in beats a minute: the rack's. Drag, or use the wheel.");
+    tempo.setTooltip("Tempo, in beats a minute: the rack's. Drag, or use the wheel - hold Shift for tenths. "
+                     "The left and right arrow keys DRAG and PUSH while held.");
 
     for (juce::Component* c : std::initializer_list<juce::Component*> { &start, &play, &stop, &cycle, &songMode, &follow, &pos, &left, &right, &tempo })
         addAndMakeVisible(c);
@@ -151,7 +159,7 @@ void ArrangeTransport::resized()
 
     follow.setBounds(r.removeFromRight(78));
     r.removeFromRight(18);
-    tempo.setBounds(r.removeFromRight(72));
+    tempo.setBounds(r.removeFromRight(90));
     r.removeFromRight(52);   // "TEMPO"
     songMode.setBounds(r.removeFromRight(64));
 }

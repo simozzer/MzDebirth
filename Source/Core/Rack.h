@@ -60,6 +60,18 @@ public:
     std::atomic<int>   mode    { Mode::Pattern };   // what plays the machines; a change waits for the bar
     std::atomic<float> tempo   { 120.0f };
     std::atomic<float> shuffle { 0.0f };    // 0 to 1
+
+    //
+    // DRAG and PUSH, as on a CD deck: held from the panel, -1 slows the rack, +1 hurries it,
+    // 0 lets it go. It bends the clock rather than the tempo - nudgeFrom at once, building to
+    // nudgeTo over nudgeRamp seconds held - and lets go of it on release, so the beat stays
+    // wherever the nudge left it. That is how a DJ pulls the rack into phase with a record.
+    //
+    std::atomic<int> nudge { 0 };
+    static constexpr double nudgeFrom = 0.03, nudgeTo = 0.10, nudgeRamp = 2.0;
+
+    // any thread: the tempo the clock is running at, nudge and all
+    float tempoNow() const { return clockTempo.load(std::memory_order_relaxed); }
     std::atomic<float> master  { 0.8f };
 
     Mz303 mz303;
@@ -113,6 +125,9 @@ private:
     void renderPcfEnvelope(int n);
 
     Clock clock;
+    std::atomic<float> clockTempo { 120.0f };
+    int nudging = 0;          // the nudge being held, and for how long, in samples
+    double nudgeHeld = 0;
     int blockSize = 512;
     std::vector<float> buffers[channels];
     std::vector<float> sampleRight;          // the sampler's right side; buffers[M950] is its left

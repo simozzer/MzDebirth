@@ -24,6 +24,7 @@ public:
     explicit Pad(juce::String text = {});
 
     std::function<void()> onPress;
+    std::function<void()> onRelease;   // for a pad that works while it is held
 
     void setText(const juce::String&);
     void setLit(bool);
@@ -31,6 +32,7 @@ public:
     void setFace(juce::Colour face, juce::Colour text);
     void setLedColour(juce::Colour c) { led = c; repaint(); }
     void setShowsLed(bool b)          { showsLed = b; repaint(); }
+    void setArrow(int dir)            { arrow = dir; repaint(); }   // a triangle for the text: -1 left, +1 right
 
     bool isLit() const { return lit; }
 
@@ -42,6 +44,7 @@ private:
     juce::String text;
     juce::Colour face { colours::pad }, ink { colours::light }, led { colours::ledRed };
     bool lit = false, marked = false, pressed = false, showsLed = true;
+    int arrow = 0;
 };
 
 //
@@ -113,13 +116,26 @@ public:
     // off where it sits in something that scrolls, so the wheel scrolls that instead
     void setWheelEnabled(bool b) { wheelEnabled = b; }
 
+    //
+    // Places after the point. The value is then counted in those - tenths, for one - and a
+    // drag or the wheel moves it a whole unit at a time, or with Shift held the last place.
+    // `digits` counts every digit, those after the point included.
+    //
+    void setDecimals(int d);
+
+    // What to show, where that is not what get() says - a value bent for the moment.
+    void setShown(std::function<int()> f) { shown = std::move(f); }
+
 private:
     void put(int v);
+    int step(const juce::ModifierKeys&) const;
 
     int lo, hi, initial, digits;
-    std::function<int()> get;
+    std::function<int()> get, shown;
     std::function<void(int)> set;
-    int dragFrom = 0;
+    int decimals = 0, unit = 1;
+    int dragFrom = 0, dragBase = 0;
+    bool dragFine = false;
     float wheel = 0;
     bool wheelEnabled = true;
 };

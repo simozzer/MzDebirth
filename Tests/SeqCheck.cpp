@@ -133,6 +133,79 @@ void timing()
     check(seen == 2 && firstAt == 0, "a step on the block's end opens the next block");
 }
 
+// DRAG and PUSH: the clock bent while one is held, the tempo itself left alone, and the beat
+// moved on by what the bend gained - whatever the blocks.
+void nudging()
+{
+    std::printf("\nDRAG and PUSH\n");
+
+    auto rackAt = [] (float bpm)
+    {
+        auto r = std::make_unique<Rack>();
+        r->prepare(48000, 512);
+        r->tempo = bpm;
+        r->playing = true;
+        return r;
+    };
+    std::vector<float> l(48000), rr(48000);
+
+    auto r = rackAt(128.4f);
+    r->render(l.data(), rr.data(), 256);
+    check(std::abs(r->tempoNow() - 128.4f) < 1.0e-4f, "a tempo to a tenth is the tempo the clock runs at",
+          fmt("%.3f", r->tempoNow()));
+
+    r->nudge = +1;
+    r->render(l.data(), rr.data(), 256);
+    const float first = r->tempoNow();
+    check(std::abs(first - 128.4f * (1.0f + (float) Rack::nudgeFrom)) < 0.01f, "PUSH hurries it at once",
+          fmt("%.2f bpm", first));
+
+    for (int i = 0; i < 4; ++i) r->render(l.data(), rr.data(), 48000);   // four seconds held
+    const float held = r->tempoNow();
+    check(std::abs(held - 128.4f * (1.0f + (float) Rack::nudgeTo)) < 0.01f, "and more the longer it is held, to its limit",
+          fmt("%.2f bpm", held));
+    check(r->tempo.load() == 128.4f, "without moving the tempo itself");
+
+    r->nudge = 0;
+    r->render(l.data(), rr.data(), 256);
+    check(r->tempoNow() == 128.4f, "let go, the clock is back on the tempo", fmt("%.3f", r->tempoNow()));
+
+    r->nudge = -1;
+    r->render(l.data(), rr.data(), 256);
+    check(std::abs(r->tempoNow() - 128.4f * (1.0f - (float) Rack::nudgeFrom)) < 0.01f, "DRAG slows it, starting afresh",
+          fmt("%.2f bpm", r->tempoNow()));
+
+    // the ramp counts samples, not blocks: held a second in 64s or in one go, the same bend
+    auto a = rackAt(120.0f), b = rackAt(120.0f);
+    a->nudge = b->nudge = +1;
+    for (int i = 0; i < 750; ++i) a->render(l.data(), rr.data(), 64);
+    b->render(l.data(), rr.data(), 48000);
+    a->render(l.data(), rr.data(), 64);
+    b->render(l.data(), rr.data(), 64);
+    check(std::abs(a->tempoNow() - b->tempoNow()) < 0.01f, "the build-up is the same whatever the blocks",
+          fmt("%.2f and %.2f bpm", a->tempoNow(), b->tempoNow()));
+
+    // and the beat has moved: a rack pushed for half a second is ahead of one left alone
+    auto pushed = rackAt(120.0f), alone = rackAt(120.0f);
+    pushed->nudge = +1;
+    pushed->render(l.data(), rr.data(), 24000);
+    pushed->nudge = 0;
+    alone->render(l.data(), rr.data(), 24000);
+    int64_t pushedAt = -1, aloneAt = -1;
+    for (int s = 0; s < 48000 && (pushedAt < 0 || aloneAt < 0); s += 16)
+    {
+        const int before[2] = { pushed->pcfStep(), alone->pcfStep() };
+        pushed->render(l.data(), rr.data(), 16);
+        alone->render(l.data(), rr.data(), 16);
+        if (pushedAt < 0 && pushed->pcfStep() == 8 && before[0] != 8) pushedAt = s;
+        if (aloneAt < 0 && alone->pcfStep() == 8 && before[1] != 8) aloneAt = s;
+    }
+    // half a second building from 3% to 4.75% fast is 0.155 of a step gained: 930 samples
+    check(pushedAt >= 0 && aloneAt - pushedAt > 850 && aloneAt - pushedAt < 1000,
+          "a nudge moves the beat, and the rack carries on from there",
+          fmt("step 8 %lld samples sooner", (long long) (aloneAt - pushedAt)));
+}
+
 // Steps the rack in blocks, returning whatever f records at each block's end.
 template <class F>
 void play(Rack& r, int blocks, int n, F&& f)
@@ -989,6 +1062,7 @@ int main()
     grooves();
     effects();
     timing();
+    nudging();
     bassLine();
     drums();
     others();
