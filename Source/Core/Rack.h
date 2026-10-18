@@ -36,7 +36,8 @@ struct Channel
     std::atomic<bool>  dist  { false };
     std::atomic<bool>  pcf   { false };
     std::atomic<bool>  comp  { false };
-    std::atomic<float> delay { 0.0f };    // the send, 0 to 1
+    std::atomic<float> delay  { 0.0f };   // the sends, 0 to 1
+    std::atomic<float> reverb { 0.0f };
 
     // For the meter: the loudest sample out of the channel, after its fader, pan and the
     // MASTER - what it puts into the output - since the panel last took it. The audio thread
@@ -146,7 +147,7 @@ private:
         Compressor comp;
     };
     Inserts inserts[channels];
-    float sendGain[channels] {};
+    float sendGain[channels] {}, reverbGain[channels] {};   // the DELAY's sends, and the REVERB's
 
     // the PCF's envelope, struck on every step, and where in this block each strike lands
     struct Strike { int at; float level; };
@@ -157,7 +158,8 @@ private:
     std::vector<float> envelope;
 
     StepDelay delay;
-    std::vector<float> sends;
+    Reverb reverb;
+    std::vector<float> sends, reverbSends;
     Compressor masterComp;
 
     // the song: the one playing, the next handed over, and the last handed back

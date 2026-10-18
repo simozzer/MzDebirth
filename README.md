@@ -173,7 +173,7 @@ transport's SHUFFLE knob.
 
 ## Effects and the mixer
 
-ReBirth's four units, along under the transport:
+ReBirth's four units, and a reverb, along under the transport:
 
 - **DIST** - drive, and a shape from soft, to hard, to a lopsided fuzz.
 - **PCF** - a filter played by one of 32 step patterns: struck on every sixteenth at that
@@ -181,11 +181,14 @@ ReBirth's four units, along under the transport:
   [MzPCF](https://github.com/simozzer/MzPCF) plugin, to use on any track in a DAW.
 - **DELAY** - echoes 1 to 16 sixteenths behind at the rack's tempo, or triplets, with
   feedback and pan. They ring on after STOP.
+- **REVERB** - a room, from small to a long hall (**DECAY**), dark to bright (**TONE**), with
+  up to 150 ms of **PRE**-delay so the sound itself comes through first. A send, as the
+  DELAY is, and it too rings on after STOP.
 - **COMP** - ratio and threshold, for the channels switched into it, and for the whole mix
   with **MASTER**.
 
-Each machine's mixer strip has its pan, its **DELAY** send, its switches into **DIST**,
-**PCF** and **COMP** - in that order, before the fader - its fader and **MUTE**, and a
+Each machine's mixer strip has its pan, its **DELAY** and **REVERB** sends, its switches
+into **DIST**, **PCF** and **COMP** - in that order, before the fader - its fader and **MUTE**, and a
 stereo **meter** beside the fader. The meter reads what the machine puts into the output,
 after its fader, pan and the MASTER: green to -12 dB, yellow to 0, and red over it, where
 that machine alone would take the output past full scale. It falls as a peak meter does,

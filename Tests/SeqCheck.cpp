@@ -584,6 +584,85 @@ void effects()
         check(peakOf(quiet, 4800) > 0.02f, "and leaves a quiet one standing", fmt("peak %.3f from 0.020", peakOf(quiet, 4800)));
     }
 
+    // REVERB: a click comes back after the pre-delay and not before, wide, and rings for as
+    // long as DECAY says, darker as TONE goes down
+    {
+        const int n = (int) rate * 2;
+        auto tail = [&] (float decay, float tone, float pre, std::vector<float>& l, std::vector<float>& r)
+        {
+            Reverb v;
+            v.prepare(rate);
+            std::vector<float> in((size_t) n, 0.0f);
+            in[0] = 1.0f;
+            l.assign((size_t) n, 0.0f);
+            r.assign((size_t) n, 0.0f);
+            v.process(in.data(), l.data(), r.data(), n, decay, tone, pre);
+        };
+        auto crossings = [] (const std::vector<float>& v, size_t from, size_t to)
+        {
+            int c = 0;
+            for (size_t i = from + 1; i < to; ++i) c += (v[i - 1] < 0.0f) != (v[i] < 0.0f) ? 1 : 0;
+            return c;
+        };
+
+        std::vector<float> l, r;
+        tail(0.5f, 0.5f, 1.0f, l, r);
+        const int preSamples = (int) (Reverb::maxPreDelay * rate);
+        int first = -1;
+        for (int i = 0; i < n && first < 0; ++i) if (std::fabs(l[(size_t) i]) > 1.0e-6f) first = i;
+        check(first >= preSamples, "the REVERB waits for its pre-delay", fmt("first sound at %.1f ms, PRE 150 ms",
+                                                                           1000.0 * first / rate));
+        double diff = 0;
+        for (size_t i = 0; i < l.size(); ++i) diff += std::fabs(l[i] - r[i]);
+        check(diff > 1.0, "and comes back wide, the two sides apart", fmt("%.1f", diff));
+
+        std::vector<float> shortL, shortR, longL, longR, darkL, darkR, brightL, brightR;
+        tail(0.1f, 0.5f, 0.0f, shortL, shortR);
+        tail(0.9f, 0.5f, 0.0f, longL, longR);
+        const size_t late = (size_t) rate;   // a second on
+        check(rmsOf(longL, late) > rmsOf(shortL, late) * 4.0f, "more DECAY rings longer",
+              fmt("%.4f against %.4f a second on", rmsOf(longL, late), rmsOf(shortL, late)));
+
+        tail(0.7f, 0.0f, 0.0f, darkL, darkR);
+        tail(0.7f, 1.0f, 0.0f, brightL, brightR);
+        const int dark = crossings(darkL, 4800, 24000), bright = crossings(brightL, 4800, 24000);
+        check(dark < bright, "and less TONE is darker", fmt("%d zero crossings against %d", dark, bright));
+
+        // a loud, long send stays finite and at a level a mix can take
+        Reverb v;
+        v.prepare(rate);
+        std::vector<float> loud((size_t) n), ol((size_t) n, 0.0f), orr((size_t) n, 0.0f);
+        sine(loud, 220.0f, 1.0f);
+        v.process(loud.data(), ol.data(), orr.data(), n, 1.0f, 1.0f, 0.0f);
+        bool finite = true;
+        for (float x : ol) finite &= std::isfinite(x);
+        check(finite && peakOf(ol) > 0.1f && peakOf(ol) < 4.0f, "a full send at the longest DECAY stays sane",
+              fmt("peak %.2f from a sine at 1.00", peakOf(ol)));
+    }
+
+    // In the rack: the 808 sent to the REVERB rings on after STOP; with no send, nothing does
+    {
+        auto ring = [] (float send)
+        {
+            Rack r;
+            r.prepare(48000, 480);
+            r.tempo = 125;
+            r.mz808.track.patterns[0].set(tr808::Voice::BD, 0, true);
+            r.channel[Rack::M808].reverb = send;
+            r.fx.set(r.fx.indexOf("reverbDecay"), 0.9f);
+            r.playing = true;
+            play(r, 10, 480, [] (int, auto&, auto&) {});   // the kick, struck at once
+            r.playing = false;
+            play(r, 50, 480, [] (int, auto&, auto&) {});   // half a second for it to die away
+            float after = 0;
+            play(r, 20, 480, [&] (int, auto& l, auto&) { for (float x : l) after = std::fmax(after, std::fabs(x)); });
+            return after;
+        };
+        const float sent = ring(1.0f), dry = ring(0.0f);
+        check(sent > 0.001f && sent > dry * 10.0f, "an 808 sent to the REVERB rings on after STOP",
+              fmt("%.4f against %.5f with no send", sent, dry));
+    }
+
     // In the rack: the 808 through every insert and the delay, stopped, and its echo still
     // rings on after
     {

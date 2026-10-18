@@ -559,7 +559,8 @@ void LevelMeter::paint(juce::Graphics& g)
 MixerStrip::MixerStrip(debirth::Channel& c, const juce::String& n)
     : channel(c), name(n),
       pan("PAN", -1.0f, 1.0f, 0.0f, [&c] { return c.pan.load(); }, [&c] (float v) { c.pan = v; }),
-      delay("DELAY", 0.0f, 1.0f, 0.0f, [&c] { return c.delay.load(); }, [&c] (float v) { c.delay = v; })
+      delay("DELAY", 0.0f, 1.0f, 0.0f, [&c] { return c.delay.load(); }, [&c] (float v) { c.delay = v; }),
+      reverb("REVERB", 0.0f, 1.0f, 0.0f, [&c] { return c.reverb.load(); }, [&c] (float v) { c.reverb = v; })
 {
     pan.setColours(juce::Colour(0xff1a1d22), colours::light, colours::light);
     pan.setValueText([] (double v)
@@ -573,6 +574,11 @@ MixerStrip::MixerStrip(debirth::Channel& c, const juce::String& n)
     delay.setValueText([] (double v) { return juce::String(juce::roundToInt(v * 100.0)) + "%"; });
     delay.setTooltip("How much of this channel goes to the DELAY, after its fader.");
     addAndMakeVisible(delay);
+
+    reverb.setColours(juce::Colour(0xff1a1d22), colours::stepYellow, colours::light);
+    reverb.setValueText([] (double v) { return juce::String(juce::roundToInt(v * 100.0)) + "%"; });
+    reverb.setTooltip("How much of this channel goes to the REVERB, after its fader.");
+    addAndMakeVisible(reverb);
 
     // the inserts, in the order the sound goes through them
     struct Insert { Pad& pad; std::atomic<bool>& on; const char* tip; };
@@ -617,6 +623,7 @@ void MixerStrip::refresh()
 {
     pan.refresh();
     delay.refresh();
+    reverb.refresh();
     fader.setValue(channel.level.load(), juce::dontSendNotification);
     mute.setLit(channel.mute.load());
     dist.setLit(channel.dist.load());
@@ -639,6 +646,8 @@ void MixerStrip::setCompact(bool c)
     }
     fader.setSliderStyle(c ? juce::Slider::LinearHorizontal : juce::Slider::LinearVertical);
     meter.setVertical(! c);
+    delay.setLegend(c ? "DLY" : "DELAY");    // three knobs to a row, folded
+    reverb.setLegend(c ? "REV" : "REVERB");
 
     resized();
     repaint();
@@ -652,8 +661,10 @@ void MixerStrip::resized()
     if (compact)
     {
         auto knobs = r.removeFromTop(40);
-        pan.setBounds(knobs.removeFromLeft(knobs.getWidth() / 2));
-        delay.setBounds(knobs);
+        const int third = knobs.getWidth() / 3;
+        pan.setBounds(knobs.removeFromLeft(third));
+        delay.setBounds(knobs.removeFromLeft(third));
+        reverb.setBounds(knobs);
 
         r.removeFromTop(3);
         auto keys = r.removeFromTop(16);
@@ -674,6 +685,10 @@ void MixerStrip::resized()
     auto knobs = r.removeFromTop(46);
     pan.setBounds(knobs.removeFromLeft(knobs.getWidth() / 2));
     delay.setBounds(knobs);
+
+    // the second send under the first, on a row of its own
+    knobs = r.removeFromTop(44);
+    reverb.setBounds(knobs.withSizeKeepingCentre(knobs.getWidth() / 2, knobs.getHeight()));
 
     r.removeFromTop(4);
     for (auto* p : { &dist, &pcf, &comp })

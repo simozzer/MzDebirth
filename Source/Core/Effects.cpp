@@ -36,6 +36,9 @@ const std::vector<Control<EffectSettings>>& controlsFx()
         { "compRatio",     "RATIO",    1,  20, &S::compRatio },
         { "compThreshold", "THRES",  -40,   0, &S::compThreshold },
         { "compMaster",    "MASTER",   0,   1, nullptr, &S::compMaster, "OFF|ON" },
+        { "reverbDecay",   "DECAY",    0,   1, &S::reverbDecay },
+        { "reverbTone",    "TONE",     0,   1, &S::reverbTone },
+        { "reverbPre",     "PRE",      0,   1, &S::reverbPre },
     };
     return table;
 }
@@ -183,6 +186,97 @@ void StepDelay::process(const float* in, float* left, float* right, int n,
 
         left[i] += y * gl;
         right[i] += y * gr;
+    }
+}
+
+//============================================================================== REVERB
+
+namespace
+{
+    // Freeverb's lengths, in samples at 44.1 kHz: no two share a factor, so their echoes
+    // never pile up on the same moment. The right side runs 23 samples longer.
+    constexpr int combLengths[8]   = { 1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617 };
+    constexpr int allPassLengths[4] = { 556, 441, 341, 225 };
+    constexpr int stereoSpread = 23;
+
+    // what goes in, scaled so eight combs ringing together come back at about the level sent -
+    // Freeverb's own calibration: its 0.015 in, and its wet of a third times three out
+    constexpr float inputGain = 0.015f, wetGain = 1.0f;
+
+    // a decaying tail runs down into numbers so small they slow some processors to a crawl
+    inline float flush(float x) { return std::abs(x) < 1.0e-20f ? 0.0f : x; }
+}
+
+void Reverb::prepare(double sampleRate)
+{
+    rate = sampleRate;
+    const double k = rate / 44100.0;
+    for (int side = 0; side < 2; ++side)
+    {
+        for (int i = 0; i < 8; ++i)
+            combs[side][i].buf.assign((size_t) std::max(1.0, (combLengths[i] + side * stereoSpread) * k), 0.0f);
+        for (int i = 0; i < 4; ++i)
+            allPasses[side][i].buf.assign((size_t) std::max(1.0, (allPassLengths[i] + side * stereoSpread) * k), 0.0f);
+    }
+    pre.assign((size_t) (rate * maxPreDelay) + 2, 0.0f);
+    clear();
+}
+
+void Reverb::clear()
+{
+    for (auto& side : combs)
+        for (auto& c : side) { std::fill(c.buf.begin(), c.buf.end(), 0.0f); c.pos = 0; c.store = 0; }
+    for (auto& side : allPasses)
+        for (auto& a : side) { std::fill(a.buf.begin(), a.buf.end(), 0.0f); a.pos = 0; }
+    std::fill(pre.begin(), pre.end(), 0.0f);
+    prePos = 0;
+}
+
+void Reverb::process(const float* in, float* left, float* right, int n,
+                     float decay, float tone, float preDelay)
+{
+    if (pre.size() < 2) return;
+
+    // DECAY: how much each pass round a comb keeps - Freeverb's room size. TONE: how much of
+    // the top each pass loses, the damping, from much (dark) to little (bright).
+    const float feedback = 0.70f + 0.28f * std::clamp(decay, 0.0f, 1.0f);
+    const float damp = 0.05f + 0.6f * (1.0f - std::clamp(tone, 0.0f, 1.0f));
+    const int preSize = (int) pre.size();
+    const int preSamples = std::clamp((int) (std::clamp(preDelay, 0.0f, 1.0f) * maxPreDelay * rate), 0, preSize - 1);
+
+    for (int i = 0; i < n; ++i)
+    {
+        // the pre-delay: the send, a moment late
+        pre[(size_t) prePos] = in[i];
+        int r = prePos - preSamples;
+        if (r < 0) r += preSize;
+        const float x = pre[(size_t) r] * inputGain;
+        if (++prePos >= preSize) prePos = 0;
+
+        float out[2] = { 0.0f, 0.0f };
+        for (int side = 0; side < 2; ++side)
+        {
+            float sum = 0.0f;
+            for (auto& c : combs[side])
+            {
+                const float y = c.buf[(size_t) c.pos];
+                c.store = flush(y * (1.0f - damp) + c.store * damp);
+                c.buf[(size_t) c.pos] = x + c.store * feedback;
+                if (++c.pos >= (int) c.buf.size()) c.pos = 0;
+                sum += y;
+            }
+            for (auto& a : allPasses[side])
+            {
+                const float b = a.buf[(size_t) a.pos];
+                a.buf[(size_t) a.pos] = flush(sum + b * 0.5f);
+                if (++a.pos >= (int) a.buf.size()) a.pos = 0;
+                sum = b - sum;
+            }
+            out[side] = sum;
+        }
+
+        left[i] += out[0] * wetGain;
+        right[i] += out[1] * wetGain;
     }
 }
 

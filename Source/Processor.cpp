@@ -397,6 +397,7 @@ juce::ValueTree DebirthProcessor::save() const
         ch.setProperty("pcf", rack.channel[c].pcf.load(), nullptr);
         ch.setProperty("comp", rack.channel[c].comp.load(), nullptr);
         ch.setProperty("delay", rack.channel[c].delay.load(), nullptr);
+        ch.setProperty("reverb", rack.channel[c].reverb.load(), nullptr);
         mixer.appendChild(ch, nullptr);
     }
     root.appendChild(mixer, nullptr);
@@ -470,6 +471,7 @@ void DebirthProcessor::load(const juce::ValueTree& root)
             rack.channel[c].pcf = (bool) ch.getProperty("pcf", false);
             rack.channel[c].comp = (bool) ch.getProperty("comp", false);
             rack.channel[c].delay = (float) ch.getProperty("delay", 0.0f);
+            rack.channel[c].reverb = (float) ch.getProperty("reverb", 0.0f);   // none before 0.8
         }
     }
 
@@ -513,6 +515,7 @@ void DebirthProcessor::startAfresh(bool factoryGrooves)
         rack.channel[m].pcf = false;
         rack.channel[m].comp = false;
         rack.channel[m].delay = 0.0f;
+        rack.channel[m].reverb = 0.0f;
     }
 
     // With the factory grooves comes the demo song made from them, ready to play in the

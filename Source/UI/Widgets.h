@@ -60,6 +60,7 @@ public:
 
     void setColours(juce::Colour cap, juce::Colour pointer, juce::Colour legendInk);
     void setValueText(std::function<juce::String(double)> f) { slider.textFromValueFunction = std::move(f); }
+    void setLegend(const juce::String& l) { legend = l; repaint(); }
     void refresh();
 
     void paint(juce::Graphics&) override;
@@ -254,7 +255,7 @@ private:
     debirth::Channel& channel;
     juce::String name;
     bool compact = false;
-    Knob pan, delay;
+    Knob pan, delay, reverb;
     Pad dist { "DIST" }, pcf { "PCF" }, comp { "COMP" };
     juce::Slider fader;
     LevelMeter meter;

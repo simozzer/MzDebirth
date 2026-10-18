@@ -40,6 +40,11 @@ struct EffectSettings
     float compRatio     = 4.0f;  // 1 to 20
     float compThreshold = -18.0f;// dB, -40 to 0
     int   compMaster    = 0;     // the whole mix through it, too
+
+    // REVERB - a send, like the DELAY
+    float reverbDecay = 0.5f;    // 0 to 1: a small room to a long hall
+    float reverbTone  = 0.5f;    // 0 to 1: dark, the highs dying first, to bright
+    float reverbPre   = 0.15f;   // 0 to 1: the pre-delay, 0 to 150 ms
 };
 
 const std::vector<Control<EffectSettings>>& controlsFx();
@@ -112,6 +117,36 @@ private:
     int write = 0;
     double time = -1;
     float damp = 0, dampCoef = 0.4f;
+};
+
+//
+// REVERB. A send, as the DELAY is: every channel's reverb send summed, through a short
+// pre-delay, into a room - eight comb filters side by side, each damped so the highs die
+// first, then four all-passes one after another to smear their echoes into a wash. It is the
+// Schroeder-Moorer reverb, in the shape Freeverb made the usual one. The right side's delays
+// run a little longer than the left's, so it comes back wide from a mono send.
+//
+class Reverb
+{
+public:
+    static constexpr double maxPreDelay = 0.15;   // seconds, at reverbPre 1
+
+    void prepare(double rate);
+    void clear();
+
+    // adds the reverb of `in` to left and right
+    void process(const float* in, float* left, float* right, int n,
+                 float decay, float tone, float preDelay);
+
+private:
+    struct Comb    { std::vector<float> buf; int pos = 0; float store = 0; };
+    struct AllPass { std::vector<float> buf; int pos = 0; };
+
+    Comb combs[2][8];
+    AllPass allPasses[2][4];
+    std::vector<float> pre;
+    int prePos = 0;
+    double rate = 48000;
 };
 
 } // namespace debirth

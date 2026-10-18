@@ -196,11 +196,13 @@ void Rack::prepare(double sampleRate, int maxBlock)
     }
     envelope.assign((size_t) blockSize, 0.0f);
     sends.assign((size_t) blockSize, 0.0f);
+    reverbSends.assign((size_t) blockSize, 0.0f);
     pcfEnv.prepare(sampleRate);
     pcfPosition = -1;
 
     // sixteen steps at the slowest tempo, and some over
     delay.prepare(sampleRate, 16.0 * 15.0 / Clock::minTempo + 0.5);
+    reverb.prepare(sampleRate);
     masterComp.prepare(sampleRate);
 }
 
@@ -473,13 +475,14 @@ void Rack::renderBlock(float* left, float* right, int n)
     const pcf::Settings pcfPanel = pcfSettings(settings);
     renderPcfEnvelope(n);
 
-    // The mixer. Each channel through its inserts, then its fader and pan, and its send to
-    // the delay after the fader. Each gain ramps across the block from where it was, so
-    // moving a fader does not click.
+    // The mixer. Each channel through its inserts, then its fader and pan, and its sends to
+    // the delay and the reverb after the fader. Each gain ramps across the block from where it
+    // was, so moving a fader does not click.
     const float inv = 1.0f / (float) n;
     float* send = sends.data();
+    float* reverbSend = reverbSends.data();
 
-    for (int i = 0; i < n; ++i) left[i] = right[i] = send[i] = 0.0f;
+    for (int i = 0; i < n; ++i) left[i] = right[i] = send[i] = reverbSend[i] = 0.0f;
 
     //
     // The meters read each channel as it reaches the output: after its fader and pan, and
@@ -510,10 +513,12 @@ void Rack::renderBlock(float* left, float* right, int n)
         const float toL = level * std::cos(angle) * 1.41421356f;
         const float toR = level * std::sin(angle) * 1.41421356f;
         const float toSend = level * ch.delay.load();
+        const float toReverb = level * ch.reverb.load();
 
         if (srcR == nullptr) srcR = srcL;
         const float dl = (toL - gainL[c]) * inv, dr = (toR - gainR[c]) * inv, ds = (toSend - sendGain[c]) * inv;
-        float gl = gainL[c], gr = gainR[c], gs = sendGain[c];
+        const float dv = (toReverb - reverbGain[c]) * inv;
+        float gl = gainL[c], gr = gainR[c], gs = sendGain[c], gv = reverbGain[c];
         float peakL = 0.0f, peakR = 0.0f;
 
         for (int i = 0; i < n; ++i)
@@ -521,10 +526,13 @@ void Rack::renderBlock(float* left, float* right, int n)
             gl += dl;
             gr += dr;
             gs += ds;
+            gv += dv;
             const float l = srcL[i] * gl, r = srcR[i] * gr;
             left[i] += l;
             right[i] += r;
-            send[i] += 0.5f * (srcL[i] + srcR[i]) * gs;
+            const float mono = 0.5f * (srcL[i] + srcR[i]);
+            send[i] += mono * gs;
+            reverbSend[i] += mono * gv;
             peakL = std::max(peakL, std::abs(l));
             peakR = std::max(peakR, std::abs(r));
         }
@@ -532,15 +540,18 @@ void Rack::renderBlock(float* left, float* right, int n)
         gainL[c] = toL;
         gainR[c] = toR;
         sendGain[c] = toSend;
+        reverbGain[c] = toReverb;
 
         // the meter's peaks, held until the panel takes them; only ever raised here
         raise(ch.peakL, peakL * meterGain);
         raise(ch.peakR, peakR * meterGain);
     }
 
-    // The delay comes back into the mix, the whole of which can go through the COMP too.
+    // The delay and the reverb come back into the mix, side by side - the echoes are not sent
+    // on into the room - the whole of which can go through the COMP too.
     const double stepLength = clock.samplesPerStep() * (settings.delayTriplet != 0 ? 2.0 / 3.0 : 1.0);
     delay.process(send, left, right, n, stepLength * settings.delaySteps, settings.delayFeedback, settings.delayPan);
+    reverb.process(reverbSend, left, right, n, settings.reverbDecay, settings.reverbTone, settings.reverbPre);
 
     if (settings.compMaster != 0)
         masterComp.process(left, right, n, settings.compThreshold, settings.compRatio);

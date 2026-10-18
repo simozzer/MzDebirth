@@ -65,15 +65,20 @@ EffectsBar::EffectsBar(Rack& r)
     delaySteps->setTooltip("The delay's time, in sixteenths at the rack's tempo. Drag up or down, or use the wheel.");
     addAndMakeVisible(*delaySteps);
 
+    //
+    // The widths are each unit's share of the row, scaled to fit it: what its controls need,
+    // and a little over. The REVERB's room came out of the slack the others had round theirs.
+    //
     units = {
-        { "DIST", { control("distAmount"), control("distShape") }, {}, 150 },
+        { "DIST", { control("distAmount"), control("distShape") }, {}, 130 },
         { "PCF",  { pcfPattern.get(), &pcfDisplay, control("pcfFreq"), control("pcfQ"), control("pcfAmount"),
                     control("pcfDecay"), control("pcfMode") }, {}, 470 },
         { "DELAY", { delaySteps.get(), toggle("delayTriplet", "3", "Triplet: two thirds of the steps."),
-                     control("delayFeedback"), control("delayPan") }, {}, 290 },
+                     control("delayFeedback"), control("delayPan") }, {}, 215 },
+        { "REVERB", { control("reverbDecay"), control("reverbTone"), control("reverbPre") }, {}, 185 },
         { "COMP", { control("compRatio"), control("compThreshold"),
                     toggle("compMaster", "MASTER", "The whole mix through the COMP, as well as the channels switched into it.") },
-          {}, 230 },
+          {}, 200 },
     };
 }
 
@@ -85,12 +90,21 @@ juce::Component* EffectsBar::control(const char* id)
         const juce::String s(id);
         if (s == "compRatio")          k->setValueText([] (double v) { return juce::String(v, 1) + ":1"; });
         else if (s == "compThreshold") k->setValueText([] (double v) { return juce::String(v, 1) + " dB"; });
+        else if (s == "reverbPre")     k->setValueText([] (double v)
+        {
+            return juce::String(juce::roundToInt(v * Reverb::maxPreDelay * 1000.0)) + " ms";
+        });
         else if (s == "delayPan")      k->setValueText([] (double v)
         {
             const int p = juce::roundToInt(v * 100.0);
             return p == 0 ? juce::String("C") : (p < 0 ? "L" + juce::String(-p) : "R" + juce::String(p));
         });
         else k->setValueText([] (double v) { return juce::String(juce::roundToInt(v * 100.0)); });
+
+        if (s == "reverbDecay") k->setTooltip("How long the REVERB rings: a small room to a long hall. "
+                                              "Each machine's REVERB knob sends it in.");
+        if (s == "reverbTone")  k->setTooltip("The REVERB's colour: dark, the highs dying first, to bright.");
+        if (s == "reverbPre")   k->setTooltip("How long before the REVERB starts, so the sound itself comes through first.");
     }
     addAndMakeVisible(*c);
     owned.push_back(std::move(c));
