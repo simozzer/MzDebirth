@@ -48,6 +48,15 @@ struct Channel
     std::atomic<bool> stopWanted { false };
     std::atomic<bool> stopped    { false };
 
+    //
+    // While the song plays, a pattern picked on the machine takes it over from its track: from
+    // the next bar the machine plays its pattern, from the top, and the song's notes for it go
+    // by. The same pattern picked again hands it back to the song, on a bar. The panel wants
+    // it; live is the audio thread's, and both are let go when the rack stops.
+    //
+    std::atomic<bool> liveWanted { false };
+    std::atomic<bool> live       { false };
+
     // For the meter: the loudest sample out of the channel, after its fader, pan and the
     // MASTER - what it puts into the output - since the panel last took it. The audio thread
     // raises it; the panel takes it, leaving 0.
@@ -156,6 +165,7 @@ private:
     void startMachine(int m);   // one machine, as startMachines and stopMachines do all five
     void stopMachine(int m);
     void applyStops();          // at the start of a bar: each machine's STOP, as wanted
+    void applyLive();           // and in SONG mode, each machine's pattern or its track
     void renderBlock(float* left, float* right, int n);
     void renderMachines(int from, int to);
     void renderPcfEnvelope(int n);

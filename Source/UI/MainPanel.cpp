@@ -421,6 +421,7 @@ MainPanel::MainPanel(DebirthProcessor& p)
 {
     setLookAndFeel(&look);
     setWantsKeyboardFocus(true);
+    PatternPanel::songPlaying = [&p] { return p.rack.playing.load() && p.rack.playingNow() == Mode::Song; };
 
     transport.onNew = [this]
     {
@@ -516,6 +517,7 @@ void MainPanel::showMachine(int machine)
 
 MainPanel::~MainPanel()
 {
+    PatternPanel::songPlaying = nullptr;
     setLookAndFeel(nullptr);
 }
 

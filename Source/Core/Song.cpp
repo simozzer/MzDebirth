@@ -229,6 +229,57 @@ Part partFromPattern(Rack& rack, int machine, int pattern, int repeats)
     return part;
 }
 
+namespace
+{
+    // the notes of the first `period` ticks, repeated from the start to `length`
+    std::vector<Note> looped(const std::vector<Note>& notes, int period, int length)
+    {
+        std::vector<Note> out;
+        for (const auto& n : notes)
+            if (n.tick < period) out.push_back(n);
+        const size_t base = out.size();
+        for (int offset = period; offset < length; offset += period)
+            for (size_t i = 0; i < base; ++i)
+                if (out[i].tick + offset < length)
+                {
+                    Note n = out[i];
+                    n.tick += offset;
+                    out.push_back(n);
+                }
+        return out;
+    }
+
+    std::vector<Note> heard(const std::vector<Note>& notes, int length)
+    {
+        std::vector<Note> out;
+        for (const auto& n : notes)
+            if (n.tick < length) out.push_back(n);
+        return out;
+    }
+}
+
+void resizePart(Part& p, int length)
+{
+    length = std::max(1, length);
+
+    // the loop, if the notes heard are still it repeated; if not, the part as it stands
+    int period = p.loop > 0 ? p.loop : p.length;
+    if (period != p.length)
+    {
+        Part a = p, b = p;
+        a.notes = heard(p.notes, p.length);
+        b.notes = heard(looped(p.notes, period, p.length), p.length);
+        a.sortNotes();
+        b.sortNotes();
+        if (a.notes != b.notes) period = p.length;
+    }
+
+    p.notes = looped(p.notes, period, std::max(length, period));
+    p.length = length;
+    p.loop = period;
+    p.sortNotes();
+}
+
 void clearRange(SongTrack& track, int from, int to)
 {
     if (to <= from) return;

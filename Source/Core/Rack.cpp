@@ -242,8 +242,13 @@ void Rack::collect()
 void Rack::dispatch(const SongPlayer::Due& d)
 {
     const bool on = d.kind == SongPlayer::Kind::On;
-    if (on && d.machine >= 0 && d.machine < channels && channel[d.machine].stopped.load())
-        return;   // its STOP holds it: the song's notes for it go by unplayed
+    if (d.machine >= 0 && d.machine < channels)
+    {
+        if (on && channel[d.machine].stopped.load())
+            return;   // its STOP holds it: the song's notes for it go by unplayed
+        if (channel[d.machine].live.load())
+            return;   // playing a pattern picked in the rack: nor do they reach it
+    }
     switch (d.machine)
     {
         case M303: if (on) mz303.songNoteOn(d.key, d.velocity, d.slide); else mz303.songNoteOff(d.key); break;
@@ -343,6 +348,23 @@ bool Rack::takePlayed(Played& p)
 }
 
 //
+// At the start of a bar in SONG mode, after the STOPs: a machine with a pattern picked lets go
+// of the song's notes and starts its pattern from the top; one handed back lets go of its
+// pattern, for the song's next notes.
+//
+void Rack::applyLive()
+{
+    for (int m = 0; m < channels; ++m)
+    {
+        const bool want = channel[m].liveWanted.load();
+        if (want == channel[m].live.load()) continue;
+        stopMachine(m);
+        if (! channel[m].stopped.load()) startMachine(m);
+        channel[m].live = want;
+    }
+}
+
+//
 // Before each block: the transport, a new song from the panel, a jump of the cursor, a
 // change of mode - and how much to render, so that the block ends exactly where the cycle
 // goes round, or on the bar a change of mode waits for.
@@ -396,6 +418,9 @@ int Rack::beginBlock(int n)
         // no bar to wait for, stopped: a machine's STOP is as wanted at once, so PLAY starts
         // without it
         for (auto& ch : channel) ch.stopped = ch.stopWanted.load();
+
+        // and a pattern picked over the song is let go: PLAY plays the song as written
+        for (auto& ch : channel) ch.live = ch.liveWanted = false;
         return n;
     }
 
@@ -420,6 +445,7 @@ int Rack::beginBlock(int n)
             playingMode = wantedMode;
             stopMachines();
             if (playingMode == Mode::Pattern) startMachines();
+            for (auto& ch : channel) ch.live = ch.liveWanted = false;   // into the song as written
         }
         else if (toBar < n)
         {
@@ -556,10 +582,24 @@ void Rack::renderBlock(float* left, float* right, int n)
                 }
             };
             dueBefore(false);
-            if (e == Clock::Event::Step && l == 0 && step % stepsPerPattern == 0) applyStops();
+            const bool isStep = e == Clock::Event::Step;
+            if (isStep && l == 0 && step % stepsPerPattern == 0)
+            {
+                applyStops();
+                applyLive();
+            }
             dueBefore(true);
             renderMachines(pos, at);
             pos = at > pos ? at : pos;
+
+            // a machine with a pattern picked in the rack plays it, as in PATTERN mode
+            auto plays = [&] (int m) { return l == lane[m] && channel[m].live.load() && ! channel[m].stopped.load(); };
+            if (plays(M303)) { if (isStep) mz303.step(); else mz303.gateOff(); }
+            if (plays(M101)) { if (isStep) mz101.step(); else mz101.gateOff(); }
+            if (plays(M808) && isStep) mz808.step();
+            if (plays(M909) && isStep) mz909.step();
+            if (plays(M950)) { if (isStep) mz950.step(); else mz950.gateOff(); }
+
             strike(at, l, e, step);
         });
 

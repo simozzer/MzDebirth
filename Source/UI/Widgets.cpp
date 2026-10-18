@@ -324,7 +324,21 @@ PatternPanel::PatternPanel(debirth::TrackBase& t, debirth::Channel& c, std::func
         numbers[i].setText(juce::String(i + 1));
         numbers[i].onPress = [this, i]
         {
-            select(track.selected.load() / patternsPerBank * patternsPerBank + i);
+            const int index = track.selected.load() / patternsPerBank * patternsPerBank + i;
+
+            // the song playing: the pattern takes the machine over, on the bar - and picked
+            // again, gives it back to the song
+            if (songPlaying && songPlaying())
+            {
+                if (channel.liveWanted.load() && index == track.selected.load())
+                {
+                    channel.liveWanted = false;
+                    return;
+                }
+                channel.liveWanted = true;
+            }
+
+            select(index);
             channel.stopWanted = false;   // a pattern picked brings a STOPped machine back, on the bar
         };
         addAndMakeVisible(numbers[i]);
@@ -382,11 +396,27 @@ void PatternPanel::tick(bool blinkPhase)
     const int bank = sel / patternsPerBank;
     const bool waiting = playing() && cur != sel;
 
-    for (int i = 0; i < patternsPerBank; ++i)
+    // The song playing, the pads show a pattern only while it has the machine: lit, or
+    // blinking while it waits for the bar to take over or to hand back.
+    if (songPlaying && songPlaying())
     {
-        const int index = bank * patternsPerBank + i;
-        numbers[i].setLit(index == sel && (! waiting || blinkPhase));
-        numbers[i].setMarked(waiting && index == cur);
+        const bool wanted = channel.liveWanted.load(), live = channel.live.load();
+        const bool lit = wanted == live ? live : blinkPhase;
+        for (int i = 0; i < patternsPerBank; ++i)
+        {
+            const int index = bank * patternsPerBank + i;
+            numbers[i].setLit(index == sel && lit && (! (live && waiting) || blinkPhase));
+            numbers[i].setMarked(live && waiting && index == cur);
+        }
+    }
+    else
+    {
+        for (int i = 0; i < patternsPerBank; ++i)
+        {
+            const int index = bank * patternsPerBank + i;
+            numbers[i].setLit(index == sel && (! waiting || blinkPhase));
+            numbers[i].setMarked(waiting && index == cur);
+        }
     }
     for (int b = 0; b < banks; ++b)
         bankPads[b].setLit(b == bank);

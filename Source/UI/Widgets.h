@@ -188,6 +188,10 @@ public:
     static constexpr int height = 212, compactHeight = 124;
     void setCompact(bool);
 
+    // set by the panel: whether the song is playing, when a pattern picked takes the machine
+    // over from its track (see Channel::liveWanted)
+    static inline std::function<bool()> songPlaying;
+
     void paint(juce::Graphics&) override;
     void resized() override;
 

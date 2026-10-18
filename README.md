@@ -101,7 +101,8 @@ the 101's both the lead and the risers and pad, which take turns.
   and all - so the factory grooves, GENERATE and TRANSPOSE all feed the song.
 - **The toolbox** is along the top, and on the right mouse button as on the ST:
   - **ARROW** picks, moves (to another track of the same kind too), copies with Alt-drag, and
-    resizes by the right edge.
+    resizes by the right edge. As with a clip in Ableton Live, a part dragged longer repeats
+    to fill the length, and dragged shorter and out again it still repeats its loop.
   - **PENCIL** draws an empty part.
   - **ERASER** and **MUTE** do what they say.
   - **SCISSORS** cuts a part in two.
@@ -178,6 +179,11 @@ it blinks, and at the start of the next bar the machine lets go of its notes and
 nothing more - its delay and reverb ringing on. It stays lit while stopped. To bring it back,
 pick a pattern on its pads: it comes in again at the start of the next bar, from the top of
 that pattern. It works in SONG mode as well, where a stopped machine's notes go by unplayed.
+
+While the song plays, a pattern picked on a machine takes that machine over from its track at
+the next bar and plays from the top, and the song's notes for it go by. Click the lit pattern
+again to hand the machine back to the song at the next bar. STOP lets any patterns go, so the
+next PLAY plays the song as written.
 
 ### Recording into the song
 

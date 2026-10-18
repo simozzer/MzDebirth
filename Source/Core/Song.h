@@ -54,9 +54,23 @@ struct Part
     bool muted = false;
     std::vector<Note> notes;   // kept in order of tick
 
+    // What repeats when the part is stretched, in ticks from its start: 0 until it has been,
+    // when the whole part is the loop. See resizePart.
+    int loop = 0;
+
     int end() const { return start + length; }
     void sortNotes();
 };
+
+//
+// A part dragged longer or shorter, as a clip is in Ableton Live: its loop repeats to fill
+// whatever length it is given, and shortened, it keeps the loop to fill out again. The notes
+// are written out in full, so everything else - playback, the editors - sees a part like any
+// other. Should the notes no longer be the loop repeated - edited since, or cut - the part as
+// it stands becomes the loop.
+//
+void resizePart(Part&, int length);
+
 
 struct SongTrack
 {

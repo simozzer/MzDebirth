@@ -371,6 +371,7 @@ namespace
                 pt.setProperty("start", part.start, nullptr);
                 pt.setProperty("length", part.length, nullptr);
                 pt.setProperty("muted", part.muted, nullptr);
+                if (part.loop > 0) pt.setProperty("loop", part.loop, nullptr);
 
                 juce::StringArray notes;
                 for (const auto& n : part.notes)
@@ -416,6 +417,7 @@ namespace
                 part.start = juce::jmax(0, (int) pt.getProperty("start", 0));
                 part.length = juce::jmax(1, (int) pt.getProperty("length", ticksPerBar));
                 part.muted = (bool) pt.getProperty("muted", false);
+                part.loop = juce::jmax(0, (int) pt.getProperty("loop", 0));
 
                 for (const auto& token : juce::StringArray::fromTokens(pt.getProperty("notes").toString(), " ", ""))
                 {

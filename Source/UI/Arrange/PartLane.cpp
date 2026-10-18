@@ -192,7 +192,7 @@ void PartLane::paint(juce::Graphics& g)
             const auto r = partBounds(t, parts[(size_t) i]);
             if (r.getRight() < 0.0f || r.getX() > (float) getWidth()) continue;
             const bool picked = state.selection.count({ t, i }) > 0;
-            const bool moving = picked && drag == Drag::Move;
+            const bool moving = (picked && drag == Drag::Move) || (drag == Drag::Resize && anchor == PartRef { t, i });
             paintPart(g, r, parts[(size_t) i], colour.withAlpha(moving ? 0.4f : 1.0f), picked, tracks[(size_t) t].machine);
         }
     }
@@ -216,8 +216,11 @@ void PartLane::paint(juce::Graphics& g)
     }
     else if (drag == Drag::Resize && valid(song, anchor))
     {
+        // the part as it will be, its loop filling out the length dragged to
         Part ghost = partOf(song, anchor);
-        ghost.length = juce::jmax(1, resizeTo - ghost.start);
+        resizePart(ghost, resizeTo - ghost.start);
+        paintPart(g, partBounds(anchor.first, ghost), ghost, trackColour(tracks[(size_t) anchor.first].colour).withAlpha(0.75f),
+                  true, tracks[(size_t) anchor.first].machine);
         g.setColour(colours::light);
         g.drawRoundedRectangle(partBounds(anchor.first, ghost), 3.0f, 1.5f);
     }
@@ -467,7 +470,7 @@ void PartLane::mouseUp(const juce::MouseEvent& e)
         const PartRef r = anchor;
         const int length = juce::jmax(1, resizeTo - partOf(song, r).start);
         if (length != partOf(song, r).length)
-            state.doc().edit([r, length] (Song& s) { s.tracks[(size_t) r.first].parts[(size_t) r.second].length = length; });
+            state.doc().edit([r, length] (Song& s) { resizePart(s.tracks[(size_t) r.first].parts[(size_t) r.second], length); });
     }
     else if (drag == Drag::Draw && drawTrack >= 0 && drawTo > drawFrom)
     {

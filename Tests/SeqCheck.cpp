@@ -1019,6 +1019,85 @@ void recording()
           fmt("%u live, %u played back", live, hits(back)));
 }
 
+// The song playing, a pattern picked in the rack takes its machine over at the next bar, and
+// picked again hands it back - the song's notes for it unplayed in between.
+void livePatterns()
+{
+    std::printf("\na pattern picked over the song\n");
+
+    constexpr int n = 500, perBar = 192;   // 120 bpm at 48 kHz
+    auto hits = [] (Rack& r) { return r.mz808.view().hitCount(tr808::Voice::BD); };
+
+    Rack r;
+    r.prepare(48000, n);
+    r.tempo = 120;
+    r.mode = Mode::Song;
+    for (int s = 0; s < 16; s += 4) r.mz808.track.patterns[0].set(tr808::Voice::BD, s, true);   // four a bar
+    Song s = defaultSong();
+    std::vector<Note> ones;
+    for (int b = 0; b < 4; ++b) ones.push_back(note(b * ticksPerBar, 24, bd808));               // the song: one a bar
+    s.tracks[Rack::M808].parts.push_back(part(0, 4 * ticksPerBar, ones));
+    publish(r, s);
+    auto& ch = r.channel[Rack::M808];
+    r.playing = true;
+
+    play(r, 100, n, [] (int, auto&, auto&) {});
+    ch.liveWanted = true;                                       // picked half way through the first bar
+    play(r, perBar - 100, n, [] (int, auto&, auto&) {});
+    const uint32_t barOne = hits(r);
+    play(r, 100, n, [] (int, auto&, auto&) {});
+    ch.liveWanted = false;                                      // and picked again in the second
+    play(r, perBar - 100, n, [] (int, auto&, auto&) {});
+    const uint32_t barTwo = hits(r) - barOne;
+    play(r, perBar, n, [] (int, auto&, auto&) {});
+    const uint32_t barThree = hits(r) - barOne - barTwo;
+
+    check(barOne == 1, "picked mid-bar, the song plays the bar out", fmt("%u kicks", barOne));
+    check(barTwo == 4, "the next bar is the pattern's, and the song's kick goes by",
+          fmt("%u kicks", barTwo));
+    check(barThree == 1, "picked again, the bar after is the song's", fmt("%u kicks", barThree));
+
+    ch.liveWanted = true;
+    play(r, perBar, n, [] (int, auto&, auto&) {});
+    r.playing = false;
+    play(r, 1, n, [] (int, auto&, auto&) {});
+    check(! ch.live.load() && ! ch.liveWanted.load(), "and STOP lets the pattern go, so PLAY plays the song");
+}
+
+// A part dragged longer loops, as a clip in Ableton Live; shorter and longer again, its loop
+// is still there; edited, it loops as it then stands.
+void looping()
+{
+    std::printf("\na part stretched\n");
+
+    Part p = part(0, ticksPerBar, {});
+    for (int b = 0; b < 4; ++b) p.notes.push_back(note(b * ticksPerQuarter, 24, bd808));
+    auto heard = [] (const Part& q)
+    {
+        int n = 0;
+        for (const auto& x : q.notes) n += x.tick < q.length ? 1 : 0;
+        return n;
+    };
+
+    resizePart(p, 3 * ticksPerBar);
+    check(p.length == 3 * ticksPerBar && heard(p) == 12 && p.notes.back().tick == 2 * ticksPerBar + 3 * ticksPerQuarter,
+          "dragged to three bars, a bar's part plays three times over", fmt("%d notes heard", heard(p)));
+
+    resizePart(p, ticksPerBar + ticksPerBar / 2);
+    check(heard(p) == 6, "dragged back to a bar and a half, it plays half of the second", fmt("%d notes", heard(p)));
+
+    resizePart(p, 4 * ticksPerBar);
+    check(heard(p) == 16 && p.loop == ticksPerBar, "and out to four bars, its loop fills them", fmt("%d notes", heard(p)));
+
+    p.notes[5].pitch = ch808;   // edited in the second bar
+    resizePart(p, 5 * ticksPerBar);
+    check(heard(p) == 20 && p.loop == 4 * ticksPerBar && p.notes[5].pitch == ch808 && p.notes[16].pitch == bd808,
+          "edited, it loops as it stands: four bars, then the first again", fmt("%d notes, loop %d", heard(p), p.loop));
+
+    Playback pb = compile([&] { Song s = defaultSong(); s.tracks[Rack::M808].parts.push_back(p); return s; }());
+    check(pb.events.size() == 20, "and plays every note it shows", fmt("%zu events", pb.events.size()));
+}
+
 void song()
 {
     std::printf("\nthe song\n");
@@ -1351,6 +1430,8 @@ int main()
     song();
     stops();
     recording();
+    looping();
+    livePatterns();
     tracksAreMachines();
     keys();
     grooves();
