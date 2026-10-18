@@ -173,6 +173,32 @@ Every machine has four banks of eight patterns, of up to sixteen steps (**STEPS*
 **COPY**, **PASTE** and **CLEAR**, and its own **SHUFFLE** switch: whether it swings with the
 transport's SHUFFLE knob.
 
+Each has a **STOP** too, for taking a machine out of the mix in time: pressed while playing,
+it blinks, and at the start of the next bar the machine lets go of its notes and plays
+nothing more - its delay and reverb ringing on. It stays lit while stopped. To bring it back,
+pick a pattern on its pads: it comes in again at the start of the next bar, from the top of
+that pattern. It works in SONG mode as well, where a stopped machine's notes go by unplayed.
+
+### Recording into the song
+
+A song is recorded as it was in ReBirth, by playing the rack live:
+
+1. Put the Arrange window's cursor where the take should go. It starts on that bar, or on
+   the next if the cursor is part way through one.
+2. Press **REC** in the transport at the top (it blinks), then **PLAY** in either transport,
+   or the space bar. Every machine plays its patterns from the top. The take appears in
+   the Arrange window as it is played, and in the rack the position beside SONG MODE shows
+   how far it has got.
+3. Pick patterns, STOP machines and bring them back as you go. A pattern picked comes in on
+   the next bar, as it always does.
+4. Press **STOP** to end the take, or **REC** again to end it and keep playing.
+
+Each stretch of one pattern becomes a part named after it, so the song shows what you played
+and when. A STOPped machine leaves its bars empty. The take records over every track for the
+bars it ran, including the bar it stopped in. One **Ctrl+Z** takes the whole take back.
+Recorded from SONG mode, the rack goes back to SONG mode when the take is over, so PLAY plays
+the song with the take in it. Knob tweaks aren't recorded.
+
 ![The Mz808 and the Mz909, each with its pattern section and mixer strip: pan, the DELAY and REVERB sends, the inserts, the fader and its meter](docs/img/drum-machines.png)
 
 ## Effects and the mixer
@@ -241,7 +267,7 @@ The check (`Tests/SeqCheck.cpp`) holds the sequencer to its timing, slides and p
 changes, checks each effect and every factory groove, generates in all 24 keys, and plays
 each machine, before the app is built round it. It also holds the song to its sample: every
 factory groove made into parts must play bit for bit as its patterns do, and the cycle,
-STOP, undo, and a song edited while it plays are each checked. The demo song is played
+STOP, a take recorded from the rack, undo, and a song edited while it plays are each checked. The demo song is played
 through and held to its shape: drops louder than the intro and the breakdown, and a beat of
 near silence before each. It links no JUCE. Without the disks it skips
 the Mz950's checks and says so; `-Release` will not go on without them.

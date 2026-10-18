@@ -106,6 +106,93 @@ void DebirthProcessor::timerCallback()
 {
     rack.mz950.service();
     rack.collect();   // the song the audio thread handed back
+
+    if (taking())
+    {
+        if (rack.playing.load()) drainTake();
+        else                     endTake();   // stopped, from wherever
+    }
+
+    // a take over and the rack stopped: back to the mode it was in
+    if (modeAfterTake >= 0 && ! taking() && ! rack.playing.load())
+    {
+        rack.mode = modeAfterTake;
+        modeAfterTake = -1;
+    }
+}
+
+//============================================================================== recording
+
+//
+// PLAY. With REC on it is a take, as ReBirth recorded a song: every machine plays its
+// patterns from the top, and what each plays goes into the song from the cursor's bar. The
+// rack goes back to the mode it was in once the take is over and the rack has stopped - from
+// SONG mode, PLAY then plays the song, take and all.
+//
+void DebirthProcessor::play()
+{
+    using namespace debirth;
+    if (rack.playing.load()) return;
+
+    if (recordReady)
+    {
+        bool all[Rack::channels];
+        for (auto& a : all) a = true;
+
+        Rack::Played stale;   // anything left from a take before
+        while (rack.takePlayed(stale)) {}
+
+        const int from = std::max(0, song.song().cursor);
+        take.begin((from + ticksPerBar - 1) / ticksPerBar * ticksPerBar, all);
+        beforeTake = song.song();
+        takeShown = false;
+        modeAfterTake = rack.mode.load();
+        rack.mode = Mode::Pattern;
+        rack.recording = true;
+    }
+    rack.playing = true;
+}
+
+//
+// The take so far, into the song: the song as it was before the take, with the take put in.
+// The first time it is an edit, to be undone; after that it is only adjusted. Should anything
+// else change the song meanwhile - a load, an edit - the take stops there, as it is.
+//
+void DebirthProcessor::drainTake()
+{
+    bool more = false;
+    debirth::Rack::Played p;
+    while (rack.takePlayed(p))
+    {
+        take.add(rack, p);
+        more = true;
+    }
+    if (! more) return;
+
+    if (takeShown && song.version() != takeVersion)
+    {
+        rack.recording = false;
+        recordReady = false;
+        return;
+    }
+
+    auto put = [this] (debirth::Song& s)
+    {
+        s = beforeTake;
+        take.apply(rack, s);
+    };
+    if (takeShown) song.adjust(put);
+    else           song.edit(put);
+    takeShown = true;
+    takeVersion = song.version();
+}
+
+void DebirthProcessor::endTake()
+{
+    if (! taking()) return;
+    rack.recording = false;
+    drainTake();
+    recordReady = false;
 }
 
 void DebirthProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
@@ -516,6 +603,7 @@ void DebirthProcessor::startAfresh(bool factoryGrooves)
         rack.channel[m].comp = false;
         rack.channel[m].delay = 0.0f;
         rack.channel[m].reverb = 0.0f;
+        rack.channel[m].stopWanted = false;   // every machine playing again
     }
 
     // With the factory grooves comes the demo song made from them, ready to play in the

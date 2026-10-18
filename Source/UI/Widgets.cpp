@@ -314,15 +314,19 @@ void FoldBar::paint(juce::Graphics& g)
 
 //============================================================================== PatternPanel
 
-PatternPanel::PatternPanel(debirth::TrackBase& t, std::function<bool()> p)
-    : track(t), playing(std::move(p))
+PatternPanel::PatternPanel(debirth::TrackBase& t, debirth::Channel& c, std::function<bool()> p)
+    : track(t), channel(c), playing(std::move(p))
 {
     using namespace debirth;
 
     for (int i = 0; i < patternsPerBank; ++i)
     {
         numbers[i].setText(juce::String(i + 1));
-        numbers[i].onPress = [this, i] { select(track.selected.load() / patternsPerBank * patternsPerBank + i); };
+        numbers[i].onPress = [this, i]
+        {
+            select(track.selected.load() / patternsPerBank * patternsPerBank + i);
+            channel.stopWanted = false;   // a pattern picked brings a STOPped machine back, on the bar
+        };
         addAndMakeVisible(numbers[i]);
     }
 
@@ -336,6 +340,13 @@ PatternPanel::PatternPanel(debirth::TrackBase& t, std::function<bool()> p)
     shuffle.setTooltip("Whether this machine swings with the SHUFFLE knob in the transport.");
     shuffle.onPress = [this] { track.shuffle = ! track.shuffle.load(); };
     addAndMakeVisible(shuffle);
+
+    // Not a switch: STOP only stops. Picking a pattern is what brings the machine back.
+    stop.setTooltip("STOP this machine at the start of the next bar: it lets go of its notes and plays "
+                    "nothing more. Pick a pattern to bring it back in, at the start of a bar.");
+    stop.setLedColour(colours::ledRed);
+    stop.onPress = [this] { channel.stopWanted = true; };
+    addAndMakeVisible(stop);
 
     copy.setTooltip("Copy this pattern, to paste over another.");
     copy.onPress = [this] { clipboard = track.selected.load(); };
@@ -381,6 +392,10 @@ void PatternPanel::tick(bool blinkPhase)
         bankPads[b].setLit(b == bank);
 
     shuffle.setLit(track.shuffle.load());
+
+    // STOP: lit while stopped, blinking while it waits for the bar to stop or to start again
+    const bool stopWaiting = playing() && channel.stopWanted.load() != channel.stopped.load();
+    stop.setLit(stopWaiting ? blinkPhase : channel.stopped.load());
     paste.setEnabled(clipboard >= 0);
     paste.setAlpha(clipboard >= 0 ? 1.0f : 0.5f);
     steps->repaint();
@@ -411,17 +426,22 @@ void PatternPanel::resized()
         r.removeFromTop(2);
         auto line = r.removeFromTop(20);
         for (int b = 0; b < debirth::banks; ++b)
-            bankPads[b].setBounds(line.removeFromLeft(26));
-        steps->setBounds(line.removeFromRight(40));
+            bankPads[b].setBounds(line.getX() + b * w, line.getY(), w, 20);
 
         r.removeFromTop(4);
         line = r.removeFromTop(20);
-        shuffle.setBounds(line.removeFromLeft(56));
-        line.removeFromLeft(2);
+        steps->setBounds(line.removeFromLeft(40));
+        line.removeFromLeft(4);
         const int e = line.getWidth() / 3;
         copy.setBounds(line.removeFromLeft(e));
         paste.setBounds(line.removeFromLeft(e));
         clear.setBounds(line);
+
+        r.removeFromTop(2);
+        line = r.removeFromTop(20);
+        shuffle.setBounds(line.removeFromLeft(line.getWidth() / 2 + 8));
+        line.removeFromLeft(2);
+        stop.setBounds(line);
         return;
     }
 
@@ -442,6 +462,8 @@ void PatternPanel::resized()
     auto row = r.removeFromTop(24);
     steps->setBounds(row.removeFromLeft(40));
     row.removeFromLeft(6);
+    stop.setBounds(row.removeFromRight(46));
+    row.removeFromRight(4);
     shuffle.setBounds(row);
 
     r.removeFromTop(8);

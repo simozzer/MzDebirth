@@ -6,6 +6,7 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 
 #include "Core/Rack.h"
+#include "Core/Recorder.h"
 
 #include <array>
 
@@ -61,6 +62,18 @@ public:
     // rack as a new Playback.
     debirth::SongDocument song;
 
+    //
+    // RECORDING from the rack into the song - see Recorder. REC in the transport makes the
+    // next PLAY, from either transport, a take: the machines play their patterns from the top,
+    // and what every one plays goes into the song from the cursor's bar, there to be seen
+    // as it is played. STOP, or REC again, ends it; one undo takes the whole take back.
+    //
+    bool recordReady = false;
+    void play();
+    void endTake();
+    bool taking() const { return rack.recording.load(); }
+    int takeReached() const { return take.reached(); }   // where in the song a take has got to
+
     // which view the window shows, the rack or the Arrange window - saved with the rest
     enum class View { Rack, Arrange };
     View view = View::Rack;
@@ -75,6 +88,13 @@ public:
 private:
     void timerCallback() override;   // the sampler's patch, handed over and collected
     void writeFactoryGrooves();
+    void drainTake();   // the steps logged so far, into the take and the song
+
+    debirth::Recorder take;
+    debirth::Song beforeTake;
+    bool takeShown = false;    // the take is in the song, as an edit to undo
+    int takeVersion = -1;      // the song as the take last left it
+    int modeAfterTake = -1;    // the mode to go back to once the take is over and stopped
 
     std::atomic<int> loads { 0 };
     std::vector<float> spare;   // a right channel to render into, when there is only a left

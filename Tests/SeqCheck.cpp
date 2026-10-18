@@ -12,6 +12,7 @@
 #include "Core/DemoSong.h"
 #include "Core/Grooves.h"
 #include "Core/Rack.h"
+#include "Core/Recorder.h"
 
 #include <algorithm>
 #include <cmath>
@@ -877,6 +878,147 @@ namespace
     const int ch808 = tr808::voiceInfo(tr808::Voice::CH).note;
 }
 
+// A machine's STOP: pressed mid-bar, it plays the bar out and nothing after; a pattern picked
+// mid-bar brings nothing back until the next bar, and then on its first sample.
+void stops()
+{
+    std::printf("\na machine's STOP\n");
+
+    // 120 bpm at 48 kHz: 6000 samples a step; blocks of 500, twelve a step, 192 a bar
+    constexpr int n = 500, perBar = 192;
+    auto hits = [] (Rack& r) { return r.mz808.view().hitCount(tr808::Voice::BD); };
+
+    // patterns: a kick on every beat, four a bar
+    {
+        Rack r;
+        r.prepare(48000, n);
+        r.tempo = 120;
+        for (int s = 0; s < 16; s += 4) r.mz808.track.patterns[0].set(tr808::Voice::BD, s, true);
+        auto& ch = r.channel[Rack::M808];
+        r.playing = true;
+
+        play(r, 60, n, [] (int, auto&, auto&) {});            // five steps in: two kicks
+        ch.stopWanted = true;
+        play(r, perBar - 60, n, [] (int, auto&, auto&) {});   // to the end of the first bar
+        const uint32_t barOne = hits(r);
+        const bool stillPlaying = ! ch.stopped.load();
+        play(r, 1, n, [] (int, auto&, auto&) {});              // the second bar begins
+        check(barOne == 4 && stillPlaying, "STOP mid-bar lets the bar play out", fmt("%u kicks in it", barOne));
+        check(hits(r) == 4 && ch.stopped.load(), "and on the next bar the machine stops", fmt("%u kicks", hits(r)));
+
+        play(r, 100, n, [] (int, auto&, auto&) {});            // half way through the second bar
+        ch.stopWanted = false;                                   // a pattern picked
+        play(r, perBar - 1 - 100, n, [] (int, auto&, auto&) {});
+        const uint32_t barTwo = hits(r);
+        play(r, 1, n, [] (int, auto&, auto&) {});              // the third bar begins
+        check(barTwo == 4, "a pattern picked mid-bar brings nothing back before the bar", fmt("%u kicks", barTwo));
+        check(hits(r) == 5 && ! ch.stopped.load(), "and on the bar the machine comes back, from the top", fmt("%u kicks", hits(r)));
+    }
+
+    // the song: the 808's notes go by unplayed while it is stopped
+    {
+        Rack r;
+        r.prepare(48000, n);
+        r.tempo = 120;
+        r.mode = Mode::Song;
+        Song s = defaultSong();
+        std::vector<Note> beats;
+        for (int b = 0; b < 16; ++b) beats.push_back(note(b * ticksPerQuarter, 24, bd808));
+        s.tracks[Rack::M808].parts.push_back(part(0, 4 * ticksPerBar, beats));
+        publish(r, s);
+        r.playing = true;
+
+        play(r, 60, n, [] (int, auto&, auto&) {});
+        r.channel[Rack::M808].stopWanted = true;
+        play(r, perBar - 60, n, [] (int, auto&, auto&) {});   // to the start of the second bar
+        const uint32_t barOne = hits(r);
+        play(r, perBar - 1, n, [] (int, auto&, auto&) {});
+        check(barOne == 4 && hits(r) == 4, "in SONG mode a stopped machine's notes go by unplayed",
+              fmt("%u in the first bar, %u after the second", barOne, hits(r)));
+    }
+}
+
+void recording()
+{
+    std::printf("\nrecording a take\n");
+
+    // 120 bpm at 48 kHz: blocks of 500, twelve a step, 192 a bar
+    constexpr int n = 500, perBar = 192;
+    auto hits = [] (Rack& r) { return r.mz808.view().hitCount(tr808::Voice::BD); };
+
+    Rack r;
+    r.prepare(48000, n);
+    r.tempo = 120;
+    for (int s = 0; s < 16; s += 4) r.mz808.track.patterns[0].set(tr808::Voice::BD, s, true);   // A1: four a bar
+    for (int s = 0; s < 16; s += 8) r.mz808.track.patterns[1].set(tr808::Voice::BD, s, true);   // A2: two
+    r.mz909.track.patterns[0].set(tr909::Voice::BD, 0, true);                                 // not armed
+
+    // the song: a part on the 808 across the take's start, and one well after it
+    Song s = defaultSong();
+    std::vector<Note> beats;
+    for (int b = 0; b < 12; ++b) beats.push_back(note(b * ticksPerQuarter, 24, bd808));
+    s.tracks[Rack::M808].parts.push_back(part(0, 3 * ticksPerBar, beats));
+    s.tracks[Rack::M808].parts.push_back(part(20 * ticksPerBar, ticksPerBar, { note(0, 24, bd808) }));
+    s.tracks[Rack::M909].parts.push_back(part(ticksPerBar, ticksPerBar, { note(0, 24, bd808) }));
+
+    // the 808 alone, from bar 2 of the song
+    bool armed[Rack::channels] {};
+    armed[Rack::M808] = true;
+    Recorder take;
+    take.begin(ticksPerBar, armed);
+    r.recording = true;
+    r.playing = true;
+
+    auto drain = [&] (int k, auto&, auto&)
+    {
+        (void) k;
+        Rack::Played p;
+        while (r.takePlayed(p)) take.add(r, p);
+    };
+    play(r, perBar + 100, n, drain);                // A1 for a bar and a half
+    r.mz808.track.selected = 1;                      // A2 from the third bar
+    play(r, 2 * perBar - 100 + 60, n, drain);
+    r.channel[Rack::M808].stopWanted = true;         // early in the fourth bar: stopped from the fifth
+    play(r, 2 * perBar - 60 + 100, n, drain);        // and on into the sixth, stopped
+    const uint32_t live = hits(r);
+    r.playing = false;
+    r.recording = false;
+    play(r, 1, n, drain);
+
+    take.apply(r, s);
+    const auto& t = s.tracks[Rack::M808];
+    check(t.parts.size() == 4, "a take on the 808: the part before it, two of its own and the one after",
+          fmt("%zu parts", t.parts.size()));
+    if (t.parts.size() == 4)
+    {
+        const Part &before = t.parts[0], &a1 = t.parts[1], &a2 = t.parts[2], &after = t.parts[3];
+        check(before.start == 0 && before.length == ticksPerBar && before.notes.size() == 4,
+              "the part it began in is cut where it began", fmt("%d long, %zu notes", before.length, before.notes.size()));
+        check(a1.name == "A1" && a1.start == ticksPerBar && a1.length == 2 * ticksPerBar && a1.notes.size() == 8,
+              "A1 for its two bars, from the take's start",
+              fmt("%s at %d, %d long, %zu notes", a1.name.c_str(), a1.start, a1.length, a1.notes.size()));
+        check(a2.name == "A2" && a2.start == 3 * ticksPerBar && a2.length == 2 * ticksPerBar && a2.notes.size() == 4,
+              "then A2, up to the bar STOP took effect on",
+              fmt("%s at %d, %d long, %zu notes", a2.name.c_str(), a2.start, a2.length, a2.notes.size()));
+        check(after.start == 20 * ticksPerBar && after.notes.size() == 1, "a part after the take is left alone");
+    }
+    check(take.end() == 7 * ticksPerBar, "the take covers the bar it stopped in", fmt("to bar %d", take.end() / ticksPerBar));
+    check(s.tracks[Rack::M909].parts.size() == 1, "a machine left out of the take keeps its track");
+
+    // and the song plays it back as the rack played it
+    Rack back;
+    back.prepare(48000, n);
+    back.tempo = 120;
+    back.mode = Mode::Song;
+    s.tracks[Rack::M909].mute = true;
+    s.cursor = ticksPerBar;
+    publish(back, s);
+    back.playing = true;
+    play(back, 5 * perBar + perBar / 2, n, [] (int, auto&, auto&) {});
+    check(hits(back) == live && live == 12, "played back, the take strikes what the rack did",
+          fmt("%u live, %u played back", live, hits(back)));
+}
+
 void song()
 {
     std::printf("\nthe song\n");
@@ -1207,6 +1349,8 @@ int main()
 {
     demo();
     song();
+    stops();
+    recording();
     tracksAreMachines();
     keys();
     grooves();

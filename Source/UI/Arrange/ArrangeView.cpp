@@ -202,8 +202,9 @@ void ArrangeView::tick()
         update();
     }
 
-    // the song playing: keep it in view, a page at a time as Cubase did
-    if (state.songPlaying())
+    // the song playing, or a take recording into it: keep it in view, a page at a time as
+    // Cubase did
+    if (state.songPlaying() || state.processor.taking())
     {
         if (state.follow && lane.getWidth() > 0)
         {

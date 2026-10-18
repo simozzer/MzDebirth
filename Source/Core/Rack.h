@@ -39,6 +39,15 @@ struct Channel
     std::atomic<float> delay  { 0.0f };   // the sends, 0 to 1
     std::atomic<float> reverb { 0.0f };
 
+    //
+    // The machine's STOP, kept with its channel because every panel of it already holds this.
+    // The panel wants it; the audio thread makes it so at the start of the next bar, when
+    // the machine lets go of its notes and plays nothing more - and wanted back, comes in
+    // again at the top of its pattern, on a bar. Stopped is the audio thread's to write.
+    //
+    std::atomic<bool> stopWanted { false };
+    std::atomic<bool> stopped    { false };
+
     // For the meter: the loudest sample out of the channel, after its fader, pan and the
     // MASTER - what it puts into the output - since the panel last took it. The audio thread
     // raises it; the panel takes it, leaving 0.
@@ -120,12 +129,33 @@ public:
     // any thread: where the song is, in ticks; -1 unless playing in SONG mode
     double songPosition() const { return songTick.load(std::memory_order_relaxed); }
 
+    //
+    // RECORDING. While it is on and the machines play their patterns, the audio thread logs
+    // each step an armed machine plays - which pattern, and which of its steps - into a
+    // queue the message thread empties, a step at a time, into a Recorder. The queue is a
+    // fixed ring with one writer and one reader, so the audio thread neither allocates nor
+    // waits; were it ever full, a step would be dropped rather than the audio held up.
+    //
+    struct Played
+    {
+        int64_t step;      // the clock's sixteenth since PLAY
+        int8_t machine;    // -1: the clock's own, logged on every straight step
+        int8_t pattern;
+        int8_t index;      // the pattern's step
+    };
+
+    std::atomic<bool> recording { false };
+    bool takePlayed(Played&);   // message thread: the next step logged, if there is one
+
 private:
     int beginBlock(int n);
     void endBlock();
     void dispatch(const SongPlayer::Due&);
     void startMachines();
     void stopMachines();
+    void startMachine(int m);   // one machine, as startMachines and stopMachines do all five
+    void stopMachine(int m);
+    void applyStops();          // at the start of a bar: each machine's STOP, as wanted
     void renderBlock(float* left, float* right, int n);
     void renderMachines(int from, int to);
     void renderPcfEnvelope(int n);
@@ -173,6 +203,12 @@ private:
     std::atomic<int> modeNow { Mode::Pattern };
     std::atomic<int> locateTo { -1 };
     std::atomic<double> songTick { -1.0 };
+
+    // the steps logged while recording: written by the audio thread, read by the panel
+    static constexpr int maxPlayed = 8192;
+    Played played[maxPlayed];
+    std::atomic<int> playedIn { 0 }, playedOut { 0 };
+    void logPlayed(int64_t step, int machine);
 };
 
 } // namespace debirth

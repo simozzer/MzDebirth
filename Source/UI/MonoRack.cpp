@@ -216,7 +216,7 @@ void NoteRoll::paint(juce::Graphics& g)
 MonoRack::MonoRack(Track<BassPattern>& track, Channel& c, std::function<bool()> p,
                    const Theme& t, std::vector<Row> layout, bool hasAccent)
     : playing(p), theme(t), rows(std::move(layout)),
-      patterns(track, p), roll(track, hasAccent), strip(c, t.name.toUpperCase())
+      patterns(track, c, p), roll(track, hasAccent), strip(c, t.name.toUpperCase())
 {
     addAndMakeVisible(patterns);
     fold.setInk(t.ink);

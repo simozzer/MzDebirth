@@ -12,7 +12,7 @@
 #include "Processor.h"
 
 //
-// Along the top: PLAY and STOP, the tempo with DRAG and PUSH beside it, the shuffle, the
+// Along the top: PLAY, STOP and REC, the tempo with DRAG and PUSH beside it, the shuffle, the
 // master level, and the files. The space bar plays and stops too, and the left and right
 // arrow keys drag and push while they are held.
 //
@@ -23,6 +23,9 @@ public:
 
     void tick();
     void refresh();
+
+    // PLAY, from the button or the space bar: with REC on, a take from the song cursor
+    void start();
 
     // the arrow keys' share of the nudge: -1 left held, +1 right, 0 neither or both
     void setKeyNudge(int dir);
@@ -37,7 +40,7 @@ private:
 
     DebirthProcessor& processor;
 
-    Pad play { "PLAY" }, stop { "STOP" };
+    Pad play { "PLAY" }, stop { "STOP" }, rec { "REC" };
     LedNumber tempo;
     Pad drag, push;
     int padNudge = 0, keyNudge = 0;
@@ -122,6 +125,9 @@ private:
     juce::Viewport viewport;
     arrange::ArrangeView arrangeView;
     Pad rackTab { "RACK" }, arrangeTab { "ARRANGE" }, songMode { "SONG MODE" };
+
+    // in the rack, where the song is: a take's progress, the song playing, or the cursor
+    arrange::LedText songPosition;
 
     // This version, and where to find the next: the project's page, between the tabs.
     juce::HyperlinkButton projectLink;

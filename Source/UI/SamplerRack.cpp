@@ -219,7 +219,7 @@ void SampleRoll::paint(juce::Graphics& g)
 //============================================================================== SamplerRack
 
 SamplerRack::SamplerRack(Mz950& s, Channel& c, std::function<bool()> p, const Theme& t)
-    : sampler(s), playing(p), theme(t), patterns(s.track, p), roll(s.track), strip(c, t.name.toUpperCase())
+    : sampler(s), playing(p), theme(t), patterns(s.track, c, p), roll(s.track), strip(c, t.name.toUpperCase())
 {
     addAndMakeVisible(patterns);
 

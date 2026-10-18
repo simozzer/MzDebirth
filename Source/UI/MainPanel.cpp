@@ -30,11 +30,25 @@ TransportBar::TransportBar(DebirthProcessor& p)
 {
     play.setLedColour(colours::ledGreen);
     play.setTooltip("Play, from the top of each pattern. The space bar plays and stops.");
-    play.onPress = [this] { processor.rack.playing = true; };
+    play.onPress = [this] { start(); };
     stop.setTooltip("Stop.");
     stop.onPress = [this] { processor.rack.playing = false; };
-    addAndMakeVisible(play);
-    addAndMakeVisible(stop);
+
+    //
+    // REC, as in ReBirth: on, it blinks, and PLAY records - every machine's
+    // patterns, into its track of the song, from the bar the song cursor is on (or the next)
+    // until STOP. Pressed again during the take, it ends the take there and plays on.
+    //
+    rec.setLedColour(colours::ledRed);
+    rec.setTooltip("REC: on, PLAY records the rack into the song - the patterns each machine plays, "
+                   "from the song cursor's bar until STOP. It records over what was there; undo takes it back.");
+    rec.onPress = [this]
+    {
+        if (processor.taking()) processor.endTake();
+        else processor.recordReady = ! processor.recordReady;
+    };
+    for (auto* b : { &play, &stop, &rec })
+        addAndMakeVisible(*b);
 
     tempo.setDecimals(1);
     tempo.setTooltip("Tempo, in beats a minute. Drag, or use the wheel - hold Shift for tenths; "
@@ -88,12 +102,20 @@ TransportBar::TransportBar(DebirthProcessor& p)
     addAndMakeVisible(keyPanel);
 }
 
+void TransportBar::start()
+{
+    processor.play();
+}
+
 void TransportBar::tick()
 {
     const bool playing = processor.rack.playing.load();
+    const bool recording = processor.taking();
+
     play.setLit(playing);
     keyPanel.tick();
     stop.setLit(! playing);
+    rec.setLit(recording || (processor.recordReady && (juce::Time::getMillisecondCounter() / 250) % 2 == 0));
     tempo.repaint();
 
     // and an arrow key let go where it was not seen does not leave the rack bent
@@ -130,12 +152,14 @@ void TransportBar::refresh()
 void TransportBar::resized()
 {
     auto r = getLocalBounds().reduced(10, 8);
-    r.removeFromLeft(200);   // the name
+    r.removeFromLeft(190);   // the name
 
-    play.setBounds(r.removeFromLeft(56));
+    play.setBounds(r.removeFromLeft(50));
     r.removeFromLeft(6);
-    stop.setBounds(r.removeFromLeft(56));
-    r.removeFromLeft(16);
+    stop.setBounds(r.removeFromLeft(50));
+    r.removeFromLeft(6);
+    rec.setBounds(r.removeFromLeft(44));
+    r.removeFromLeft(12);
 
     tempo.setBounds(r.removeFromLeft(88).withSizeKeepingCentre(88, 34).translated(0, 6));
     r.removeFromLeft(6);
@@ -445,6 +469,10 @@ MainPanel::MainPanel(DebirthProcessor& p)
         addAndMakeVisible(*t);
     }
 
+    songPosition.setTooltip("Where the song is, in bars, beats and ticks: how far a take has recorded, "
+                            "where the song is playing, or the cursor.");
+    addChildComponent(songPosition);
+
     //
     // Where to come back to: the version this is, and the page the next one will be on.
     // Nothing here checks for updates by itself - the app never goes online unasked.
@@ -471,6 +499,7 @@ void MainPanel::showView(int v)
     const bool arranging = view == DebirthProcessor::View::Arrange;
     viewport.setVisible(! arranging);
     arrangeView.setVisible(arranging);
+    songPosition.setVisible(! arranging);   // the Arrange window has its own
     rackTab.setLit(! arranging);
     arrangeTab.setLit(arranging);
     if (isShowing()) grabKeyboardFocus();
@@ -510,6 +539,11 @@ void MainPanel::timerCallback()
 
     if (arrangeView.isVisible()) arrangeView.tick();
     else                         rack.tick(blinkPhase);
+
+    const double songAt = processor.rack.songPosition();
+    songPosition.setText(arrange::position(processor.taking() ? (double) processor.takeReached()
+                                           : songAt >= 0.0     ? songAt
+                                                               : (double) processor.song.song().cursor));
 }
 
 void MainPanel::refresh()
@@ -526,7 +560,8 @@ bool MainPanel::keyPressed(const juce::KeyPress& k)
 {
     if (k == juce::KeyPress::spaceKey)
     {
-        processor.rack.playing = ! processor.rack.playing.load();
+        if (processor.rack.playing.load()) processor.rack.playing = false;
+        else                               transport.start();
         return true;
     }
     if (k == juce::KeyPress::F1Key) { showView((int) DebirthProcessor::View::Rack); return true; }
@@ -609,6 +644,8 @@ void MainPanel::resized()
     tabs.removeFromLeft(4);
     arrangeTab.setBounds(tabs.removeFromLeft(110));
     songMode.setBounds(tabs.removeFromRight(120));
+    tabs.removeFromRight(6);
+    songPosition.setBounds(tabs.removeFromRight(130));
     projectLink.setBounds(tabs.reduced(16, 0));
     r.removeFromTop(gap);
 

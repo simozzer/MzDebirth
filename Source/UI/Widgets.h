@@ -177,15 +177,15 @@ private:
 class PatternPanel final : public juce::Component
 {
 public:
-    PatternPanel(debirth::TrackBase&, std::function<bool()> playing);
+    PatternPanel(debirth::TrackBase&, debirth::Channel&, std::function<bool()> playing);
 
     void tick(bool blinkPhase);   // from the panel's timer
 
     //
-    // Packed into four rows, for a machine folded down: the pads closer, their labels gone,
-    // the banks and steps on one row and SHUFFLE and the editing on the next.
+    // Packed into five rows, for a machine folded down: the pads closer, their labels gone,
+    // the banks on a row, the steps and the editing on the next, and SHUFFLE and STOP last.
     //
-    static constexpr int height = 212, compactHeight = 102;
+    static constexpr int height = 212, compactHeight = 124;
     void setCompact(bool);
 
     void paint(juce::Graphics&) override;
@@ -195,12 +195,13 @@ private:
     void select(int index);
 
     debirth::TrackBase& track;
+    debirth::Channel& channel;   // for the machine's STOP
     std::function<bool()> playing;
     bool compact = false;
 
     Pad numbers[debirth::patternsPerBank];
     Pad bankPads[debirth::banks];
-    Pad shuffle { "SHUFFLE" };
+    Pad shuffle { "SHUFFLE" }, stop { "STOP" };
     Pad copy { "COPY" }, paste { "PASTE" }, clear { "CLEAR" };
     std::unique_ptr<LedNumber> steps;
 

@@ -242,6 +242,8 @@ void Rack::collect()
 void Rack::dispatch(const SongPlayer::Due& d)
 {
     const bool on = d.kind == SongPlayer::Kind::On;
+    if (on && d.machine >= 0 && d.machine < channels && channel[d.machine].stopped.load())
+        return;   // its STOP holds it: the song's notes for it go by unplayed
     switch (d.machine)
     {
         case M303: if (on) mz303.songNoteOn(d.key, d.velocity, d.slide); else mz303.songNoteOff(d.key); break;
@@ -253,15 +255,91 @@ void Rack::dispatch(const SongPlayer::Due& d)
     }
 }
 
+// every machine but those whose STOP holds them
 void Rack::startMachines()
 {
-    mz303.start(); mz101.start(); mz808.start(); mz909.start(); mz950.start();
+    for (int m = 0; m < channels; ++m)
+        if (! channel[m].stopped.load()) startMachine(m);
 }
 
 void Rack::stopMachines()
 {
-    mz303.stop(); mz101.stop(); mz808.stop(); mz909.stop(); mz950.stop();
+    for (int m = 0; m < channels; ++m) stopMachine(m);
     player.forget();
+}
+
+void Rack::startMachine(int m)
+{
+    switch (m)
+    {
+        case M303: mz303.start(); break;
+        case M101: mz101.start(); break;
+        case M808: mz808.start(); break;
+        case M909: mz909.start(); break;
+        case M950: mz950.start(); break;
+        default: break;
+    }
+}
+
+void Rack::stopMachine(int m)
+{
+    switch (m)
+    {
+        case M303: mz303.stop(); break;
+        case M101: mz101.stop(); break;
+        case M808: mz808.stop(); break;
+        case M909: mz909.stop(); break;
+        case M950: mz950.stop(); break;
+        default: break;
+    }
+}
+
+//
+// At the start of a bar - the first step of it, before any machine has played it - each
+// machine's STOP as the panel wants it. Stopped, a machine lets go of what it is holding and
+// plays nothing more; started again, it comes in at the top of its pattern, on this bar.
+//
+void Rack::applyStops()
+{
+    for (int m = 0; m < channels; ++m)
+    {
+        const bool want = channel[m].stopWanted.load();
+        if (want == channel[m].stopped.load()) continue;
+        if (want) stopMachine(m);
+        else      startMachine(m);
+        channel[m].stopped = want;
+    }
+}
+
+//
+// The audio thread's half of the recording queue: the step a machine has just played - its
+// pattern and the step in it, as the machine's track now says.
+//
+void Rack::logPlayed(int64_t step, int machine)
+{
+    const int in = playedIn.load(std::memory_order_relaxed);
+    const int next = (in + 1) % maxPlayed;
+    if (next == playedOut.load(std::memory_order_acquire)) return;   // full: dropped
+
+    if (machine < 0)
+    {
+        played[in] = { step, -1, -1, -1 };
+    }
+    else
+    {
+        TrackBase& t = track(machine);
+        played[in] = { step, (int8_t) machine, (int8_t) t.current.load(), (int8_t) t.position.load() };
+    }
+    playedIn.store(next, std::memory_order_release);
+}
+
+bool Rack::takePlayed(Played& p)
+{
+    const int out = playedOut.load(std::memory_order_relaxed);
+    if (out == playedIn.load(std::memory_order_acquire)) return false;
+    p = played[out];
+    playedOut.store((out + 1) % maxPlayed, std::memory_order_release);
+    return true;
 }
 
 //
@@ -314,6 +392,10 @@ int Rack::beginBlock(int n)
         modeNow = playingMode;
         songTick = -1;
         locateTo = -1;
+
+        // no bar to wait for, stopped: a machine's STOP is as wanted at once, so PLAY starts
+        // without it
+        for (auto& ch : channel) ch.stopped = ch.stopWanted.load();
         return n;
     }
 
@@ -424,11 +506,23 @@ void Rack::renderBlock(float* left, float* right, int n)
             pos = at > pos ? at : pos;
 
             const bool isStep = e == Clock::Event::Step;
-            if (l == lane[M303]) { if (isStep) mz303.step(); else mz303.gateOff(); }
-            if (l == lane[M101]) { if (isStep) mz101.step(); else mz101.gateOff(); }
-            if (l == lane[M808] && isStep) mz808.step();
-            if (l == lane[M909] && isStep) mz909.step();
-            if (l == lane[M950]) { if (isStep) mz950.step(); else mz950.gateOff(); }
+            if (isStep && l == 0 && step % stepsPerPattern == 0) applyStops();   // a bar begins
+
+            auto plays = [&] (int m) { return l == lane[m] && ! channel[m].stopped.load(); };
+            if (plays(M303)) { if (isStep) mz303.step(); else mz303.gateOff(); }
+            if (plays(M101)) { if (isStep) mz101.step(); else mz101.gateOff(); }
+            if (plays(M808) && isStep) mz808.step();
+            if (plays(M909) && isStep) mz909.step();
+            if (plays(M950)) { if (isStep) mz950.step(); else mz950.gateOff(); }
+
+            // recording: the clock's own step, so the take knows how far it ran with every
+            // machine stopped, and each machine's that played
+            if (isStep && recording.load())
+            {
+                if (l == 0) logPlayed(step, -1);
+                for (int m = 0; m < channels; ++m)
+                    if (plays(m)) logPlayed(step, m);
+            }
 
             strike(at, l, e, step);
         });
@@ -449,12 +543,21 @@ void Rack::renderBlock(float* left, float* right, int n)
         int next = 0;
         clock.advance(n, [&] (int at, int l, Clock::Event e, int64_t step)
         {
-            for (; next < dueCount && songDue[next].at <= at; ++next)
+            // The song's notes up to the clock's event; and if a bar begins there, each
+            // machine's STOP between the notes before it and the notes on it, so a machine
+            // stopped on the bar does not play the bar's first note, nor one started miss it.
+            auto dueBefore = [&] (bool orOn)
             {
-                renderMachines(pos, songDue[next].at);
-                pos = std::max(pos, songDue[next].at);
-                dispatch(songDue[next].due);
-            }
+                for (; next < dueCount && (songDue[next].at < at || (orOn && songDue[next].at == at)); ++next)
+                {
+                    renderMachines(pos, songDue[next].at);
+                    pos = std::max(pos, songDue[next].at);
+                    dispatch(songDue[next].due);
+                }
+            };
+            dueBefore(false);
+            if (e == Clock::Event::Step && l == 0 && step % stepsPerPattern == 0) applyStops();
+            dueBefore(true);
             renderMachines(pos, at);
             pos = at > pos ? at : pos;
             strike(at, l, e, step);

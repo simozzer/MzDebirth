@@ -103,6 +103,13 @@ Song oneTrackPerMachine(Song);
 Part partFromPattern(Rack&, int machine, int pattern, int repeats);
 
 //
+// Wipe a track from one tick to another, as a take recorded over it does, tape-fashion: a
+// part inside goes, one across the edge is cut there - its notes beyond dropped, and those
+// sounding over the edge cut short - and one across the whole range is cut in two.
+//
+void clearRange(SongTrack&, int from, int to);
+
+//
 // The song as the audio thread plays it: every note, in order of its start. Mutes and solos
 // are already applied, and a mono line's notes that overlap the note before are marked as
 // slides.

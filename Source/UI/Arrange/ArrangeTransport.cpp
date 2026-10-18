@@ -95,6 +95,11 @@ void ArrangeTransport::toStart()
 void ArrangeTransport::playFromCursor()
 {
     auto& rack = state.processor.rack;
+    if (state.processor.recordReady && ! rack.playing.load())
+    {
+        state.processor.play();   // REC is on: a take from the cursor, as from the rack's PLAY
+        return;
+    }
     if (! rack.playing.load()) rack.mode = Mode::Song;   // from here, PLAY plays the song
     rack.playing = true;
 }

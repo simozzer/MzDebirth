@@ -63,6 +63,7 @@ set(CORE_SOURCES
     Source/Core/Grooves.cpp
     Source/Core/Key.cpp
     Source/Core/Rack.cpp
+    Source/Core/Recorder.cpp
     Source/Core/Sampler.cpp
     Source/Core/Song.cpp
     "${MZ101_PATH}/Source/SH101/Engine.cpp"

@@ -229,6 +229,37 @@ Part partFromPattern(Rack& rack, int machine, int pattern, int repeats)
     return part;
 }
 
+void clearRange(SongTrack& track, int from, int to)
+{
+    if (to <= from) return;
+
+    // the piece of a part from one tick to another of it, its notes moved to match
+    auto piece = [] (const Part& p, int a, int b)
+    {
+        Part out = p;
+        out.start = p.start + a;
+        out.length = b - a;
+        out.notes.clear();
+        for (Note n : p.notes)
+        {
+            if (n.tick < a || n.tick >= b) continue;
+            n.tick -= a;
+            n.length = std::min(n.length, out.length - n.tick);
+            out.notes.push_back(n);
+        }
+        return out;
+    };
+
+    std::vector<Part> kept;
+    for (const auto& p : track.parts)
+    {
+        if (p.end() <= from || p.start >= to) { kept.push_back(p); continue; }
+        if (p.start < from) kept.push_back(piece(p, 0, from - p.start));
+        if (p.end() > to)   kept.push_back(piece(p, to - p.start, p.length));
+    }
+    track.parts = std::move(kept);
+}
+
 //============================================================================== compile
 
 Playback compile(const Song& song)

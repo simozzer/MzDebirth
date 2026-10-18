@@ -8,7 +8,7 @@ using namespace debirth;
 DrumRack::DrumRack(Track<DrumPattern>& t, Channel& c, std::function<bool()> p,
                    const Theme& th, std::vector<VoiceSpec> list, Palette pal)
     : track(t), playing(p), theme(th), palette(std::move(pal)),
-      patterns(t, p), voiceList(std::move(list)), strip(c, th.name.toUpperCase())
+      patterns(t, c, p), voiceList(std::move(list)), strip(c, th.name.toUpperCase())
 {
     const int pads = (int) voiceList.size() + 1;
     for (int pad = 0; pad < pads; ++pad)
