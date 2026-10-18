@@ -2,11 +2,11 @@
 
 A rack of the Mz synths, played from a step sequencer, in the spirit of the old ReBirth
 RB-338: five machines, each with its own panel, its own patterns and a channel on the mixer,
-all on one clock, with ReBirth's effects units along the top. And beside the rack, an
-[Arrange window](#the-arrange-window) after Cubase on the Atari ST, to lay the patterns out
-as a song and write parts of any length.
+all on one clock, with ReBirth's effects units and a reverb along the top. And beside the
+rack, an [Arrange window](#the-arrange-window) after Cubase on the Atari ST, to lay the
+patterns out as a song and write parts of any length.
 
-![The rack: the transport and KEY section, the effects units, the RACK and ARRANGE tabs, the Mz303 and the Mz101](docs/img/rack.png)
+![The rack: the transport and KEY section; the DIST, PCF, DELAY, REVERB and COMP units; the RACK and ARRANGE tabs and the link to the project page; the Mz303 and the Mz101, each with its pattern section and mixer strip](docs/img/rack.png)
 
 It plays the synths' real engines - [Mz303](https://github.com/simozzer/Mz303),
 [Mz101](https://github.com/simozzer/Mz101), [Mz808](https://github.com/simozzer/Mz808),
@@ -73,6 +73,8 @@ but not yet tried on a real one. If something doesn't work, please
   `.mzdebirth` files. The app also remembers where it was left.
 - **RACK** and **ARRANGE** (or F1 and F2), under the effects, switch between the rack and
   the Arrange window, where the patterns become a song - see below.
+- The link between the tabs shows the version you have; click it for the project page,
+  where the next version, what's new in it and the issue tracker are.
 
 ## The Arrange window
 
@@ -82,7 +84,7 @@ each track *parts*: notes of any length at any position, not 16-step patterns. T
 still a click away, for the sound: every knob, fader and effect plays the song as it plays
 the patterns, and a track's **RACK** goes straight to its machine.
 
-![The Arrange window with the demo song: the rolls and risers building to each drop, and the breakdown between](docs/img/arrange.png)
+![The Arrange window with the demo song: a track for each machine, each with its RACK switch, and the rolls and risers building to each drop, with the breakdown between](docs/img/arrange.png)
 
 The **demo song** a new rack opens with shows the way: bank A's grooves laid out over 64
 bars at 132 bpm, with parts written for it. In each build the kick drops away, a 909 snare
@@ -162,14 +164,16 @@ Double-click a part to edit it:
 The step editors of the **Mz303**, **Mz101** and **Mz950** fold away: click the
 **STEP SEQUENCER** bar over one, and the machine folds down to its knobs, its pattern
 section and mixer strip packing down beside them (the inserts and MUTE as lettered keys that
-glow when on, the fader and meter on their sides). The bar stays where it was, under the knobs, to unfold
-it again. The rack remembers which are folded.
+glow when on, the fader and meter on their sides). The bar stays where it was, under the
+knobs, to unfold it again. The rack remembers which are folded.
+
+![The whole rack in a tall window, the Mz303, Mz101 and Mz950 folded down to their knobs with their pattern sections and mixer strips packed beside them, the Mz808 and Mz909 in full](docs/img/rack-folded.png)
 
 Every machine has four banks of eight patterns, of up to sixteen steps (**STEPS**), with
 **COPY**, **PASTE** and **CLEAR**, and its own **SHUFFLE** switch: whether it swings with the
 transport's SHUFFLE knob.
 
-![The Mz808 and the Mz909, each with its pattern section and mixer strip](docs/img/drum-machines.png)
+![The Mz808 and the Mz909, each with its pattern section and mixer strip: pan, the DELAY and REVERB sends, the inserts, the fader and its meter](docs/img/drum-machines.png)
 
 ## Effects and the mixer
 
@@ -262,7 +266,8 @@ cmake.
     Source/UI/Arrange   the Arrange window, and KEY EDIT and DRUM EDIT
     Source/Processor.*  the rack as a JUCE processor, and its saved state
     Tests/SeqCheck.cpp  the check
-    installer/          the Inno Setup script, and the zip's README
+    installer/          the Inno Setup script, the zip's README, and mac/: the Mac's install
+                        script and READ ME FIRST, and how its build makes the disks
 
 ## Licence
 
