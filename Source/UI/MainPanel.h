@@ -123,6 +123,9 @@ private:
     arrange::ArrangeView arrangeView;
     Pad rackTab { "RACK" }, arrangeTab { "ARRANGE" }, songMode { "SONG MODE" };
 
+    // This version, and where to find the next: the project's page, between the tabs.
+    juce::HyperlinkButton projectLink;
+
     std::unique_ptr<juce::FileChooser> chooser;
     int seenLoads = -1;
     int ticks = 0;

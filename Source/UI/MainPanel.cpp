@@ -444,6 +444,20 @@ MainPanel::MainPanel(DebirthProcessor& p)
         t->setLedColour(colours::ledGreen);
         addAndMakeVisible(*t);
     }
+
+    //
+    // Where to come back to: the version this is, and the page the next one will be on.
+    // Nothing here checks for updates by itself - the app never goes online unasked.
+    //
+    projectLink.setButtonText("MzDebirth " JucePlugin_VersionString "  -  github.com/simozzer/MzDebirth");
+    projectLink.setURL(juce::URL("https://github.com/simozzer/MzDebirth"));
+    projectLink.setFont(fonts::bold(10.0f), false, juce::Justification::centred);
+    projectLink.setColour(juce::HyperlinkButton::textColourId, colours::light.withAlpha(0.6f));
+    projectLink.setTooltip("The project's page: the latest version and what's new in it, the source, "
+                           "and where to report a problem. Opens in your browser.");
+    projectLink.setWantsKeyboardFocus(false);   // or the space bar would open it rather than play
+    addAndMakeVisible(projectLink);
+
     showView((int) processor.view);
 
     startTimerHz(30);
@@ -594,6 +608,7 @@ void MainPanel::resized()
     tabs.removeFromLeft(4);
     arrangeTab.setBounds(tabs.removeFromLeft(110));
     songMode.setBounds(tabs.removeFromRight(120));
+    projectLink.setBounds(tabs.reduced(16, 0));
     r.removeFromTop(gap);
 
     viewport.setBounds(r);
