@@ -38,7 +38,7 @@ IF IT WON'T START
 
 It needs a few libraries most desktops already have. On Ubuntu or Debian:
 
-  sudo apt install libasound2 libfreetype6 libfontconfig1 libx11-6 \
+  sudo apt install libasound2 libfreetype6 libfontconfig1 libx11-6 libxi6 \
                    libxext6 libxinerama1 libxrandr2 libxcursor1 libxrender1
 
 (On Ubuntu 24.04 and later, libasound2 is called libasound2t64.)
