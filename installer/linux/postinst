@@ -1,0 +1,22 @@
+#!/bin/sh
+#
+# Under WSL there is no sound card: WSL plays sound through a PulseAudio server instead, which
+# an ALSA program such as MzDebirth only reaches through ALSA's PulseAudio plugin, made its
+# default. On anything else this does nothing - a desktop's PipeWire or PulseAudio already
+# provides ALSA's default.
+#
+set -e
+
+conf=/etc/alsa/conf.d/99-mzdebirth-wsl.conf
+
+if [ "$1" = "configure" ] && [ -S /mnt/wslg/PulseServer ] && grep -qi microsoft /proc/version 2>/dev/null; then
+    mkdir -p /etc/alsa/conf.d
+    cat > "$conf" <<'EOF'
+# Written by MzDebirth's package, under WSL: ALSA's default device is WSL's PulseAudio server.
+# Removed with the package.
+pcm.!default pulse
+ctl.!default pulse
+EOF
+fi
+
+exit 0

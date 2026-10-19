@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=MzDebirth
+GenericName=Synth rack and sequencer
+Comment=A rack of the Mz synths, in the spirit of ReBirth RB-338
+Exec=mzdebirth
+Icon=mzdebirth
+Terminal=false
+Categories=AudioVideo;Audio;Midi;Music;
+Keywords=303;808;909;sequencer;synthesizer;drum machine;acid;

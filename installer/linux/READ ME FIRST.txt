@@ -1,0 +1,69 @@
+MzDebirth for Linux - BETA
+==========================
+
+A rack of the Mz synths - Mz303, Mz101, Mz808, Mz909 and Mz950 - played from a
+step sequencer, with an Arrange window for whole songs, in the spirit of the
+old ReBirth RB-338. A standalone app, with the Mz950's sample disks.
+Free and open source (AGPLv3). Created by Simon Moscrop. Independent - not
+affiliated with Reason Studios (Propellerhead), Steinberg or Roland.
+
+For 64-bit x86 PCs: Ubuntu 22.04 or later, or another distribution as new.
+
+This is a beta. It's built on GitHub's Ubuntu machines and passes the same
+checks as the Windows version, but hasn't been tried much on real Linux desks.
+If something doesn't work, please say so on
+https://github.com/simozzer/MzDebirth/issues
+
+
+RUNNING IT
+----------
+
+Unpack the archive anywhere - your home folder is fine - and run MzDebirth in
+it, from a file manager or a terminal:
+
+  tar -xzf MzDebirth-*-linux-x86_64-beta.tar.gz
+  cd MzDebirth-*-linux-x86_64-beta
+  ./MzDebirth
+
+Nothing is installed and no password is needed. Keep the disks folder beside
+MzDebirth: the Mz950 opens on disks/DRUMS.hfe. If it isn't there, the Mz950
+starts with no disk - use LOAD DISK on it to open one.
+
+The rack keeps its settings in ~/.config/MzDebirth, and saves racks in your
+Documents folder, under MzDebirth.
+
+
+IF IT WON'T START
+-----------------
+
+It needs a few libraries most desktops already have. On Ubuntu or Debian:
+
+  sudo apt install libasound2 libfreetype6 libfontconfig1 libx11-6 \
+                   libxext6 libxinerama1 libxrandr2 libxcursor1 libxrender1
+
+(On Ubuntu 24.04 and later, libasound2 is called libasound2t64.)
+
+There's a .deb as well, for Ubuntu and Debian: it installs MzDebirth in the
+menu and fetches all of this itself - see the releases page.
+
+
+UNDER WSL (Windows Subsystem for Linux)
+---------------------------------------
+
+It runs under WSL on Windows 11, in a window of its own, but WSL has no sound
+card: it plays sound through a PulseAudio server, which MzDebirth reaches
+through ALSA's PulseAudio plugin. Without it there's no output to pick. Once:
+
+  sudo apt install libasound2-plugins
+  printf 'pcm.!default pulse\nctl.!default pulse\n' > ~/.asoundrc
+
+then choose the "default" output under Options. (The .deb does this itself.)
+
+
+SOUND
+-----
+
+If it says it can't open the audio device, another program may have it - or
+pick another output under Options, top left. With PipeWire or PulseAudio,
+choose the "default" or "pipewire" device. If the sound crackles, raise the
+buffer size there.

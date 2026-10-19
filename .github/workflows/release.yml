@@ -117,3 +117,13 @@ jobs:
     uses: ./.github/workflows/mac.yml
     with:
       tag: ${{ inputs.tag || github.ref_name }}
+
+  #
+  # The Linux archive, a beta, attached likewise. The build is linux.yml, a check on every
+  # push to main too.
+  #
+  linux:
+    needs: windows
+    uses: ./.github/workflows/linux.yml
+    with:
+      tag: ${{ inputs.tag || github.ref_name }}

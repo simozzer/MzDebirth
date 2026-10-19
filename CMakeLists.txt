@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(MzDebirth VERSION 0.10.0 LANGUAGES C CXX)
+project(MzDebirth VERSION 0.10.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -105,6 +105,10 @@ juce_add_plugin(MzDebirth
     PLUGIN_CODE                 Dbr1          # never change - see above
 
     VERSION                     "${PROJECT_VERSION}"
+
+    # the app's icon, made from one picture into the Windows .ico and the Mac .icns -
+    # drawn by Resources/Icon.cs; Resources/icon-256.png is the Linux menu's copy
+    ICON_BIG                    "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png"
 
     IS_SYNTH                    TRUE
     NEEDS_MIDI_INPUT            FALSE

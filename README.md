@@ -47,6 +47,33 @@ It's a beta: built on GitHub's Macs, where it passes the same checks as the Wind
 but not yet tried on a real one. If something doesn't work, please
 [open an issue](https://github.com/simozzer/MzDebirth/issues).
 
+### Linux (beta)
+
+For 64-bit x86 PCs running Ubuntu 22.04 or later, or another distribution as new. There are
+two downloads on the [releases page](https://github.com/simozzer/MzDebirth/releases):
+
+- **mzdebirth_*version*_amd64.deb**, for Ubuntu, Debian, Mint and the like. Install it with
+
+      sudo apt install ./mzdebirth_<version>_amd64.deb
+
+  It puts MzDebirth in the applications menu and a `mzdebirth` command on the path, with the
+  app and its disks in `/opt/MzDebirth`, and fetches the libraries it needs. Remove it with
+  `sudo apt remove mzdebirth`.
+- **MzDebirth-*version*-linux-x86_64-beta.tar.gz**, for any distribution, nothing installed:
+
+      tar -xzf MzDebirth-<version>-linux-x86_64-beta.tar.gz
+      cd MzDebirth-<version>-linux-x86_64-beta
+      ./MzDebirth
+
+  Keep the `disks` folder beside it. `READ ME FIRST.txt` in it lists the few libraries it
+  needs, if a minimal system lacks them.
+
+It plays through ALSA, which PipeWire and PulseAudio both provide. It runs under **WSL** on
+Windows 11 too; WSL has no sound card, so it needs ALSA's PulseAudio plugin, which the .deb
+installs and sets up - `READ ME FIRST.txt` says how by hand. It's a beta: built on GitHub's
+Ubuntu machines, where it passes the same checks as the Windows version, and run on Ubuntu
+24.04 under WSL, but not yet tried much on real Linux desktops.
+
 ## Getting started
 
 - **Options** (top left) picks the audio output.
@@ -363,7 +390,10 @@ disks and all - and attaches them to a draft release, with the notes in
 `docs/releases/<tag>.md`. A Mac job then adds `MzDebirth-<version>-macOS-beta.zip` to the
 same draft. It's `.github/workflows/mac.yml`, which also runs on every push to `main` as a
 check. It makes the Mz950's disks itself, with the .NET SDK
-(`installer/mac/MakeDisks.csproj`): the same disks, byte for byte.
+(`installer/mac/MakeDisks.csproj`): the same disks, byte for byte. A Linux job, `.github/workflows/linux.yml`, does the same on Ubuntu 22.04 and adds
+`MzDebirth-<version>-linux-x86_64-beta.tar.gz` and `mzdebirth_<version>_amd64.deb`. It runs
+on every push to `main` too, and can be run by hand from the Actions tab with a release's tag
+to add the Linux downloads to a release made before them.
 
 Any of the other repositories can be somewhere else: pass `-DJUCE_PATH=`, `-DMZ101_PATH=`,
 `-DMZ303_PATH=`, `-DMZ808_PATH=`, `-DMZ909_PATH=`, `-DMZ950_PATH=` or `-DMZPCF_PATH=` to
@@ -378,8 +408,11 @@ cmake.
     Source/UI/Arrange   the Arrange window, and KEY EDIT and DRUM EDIT
     Source/Processor.*  the rack as a JUCE processor, and its saved state
     Tests/SeqCheck.cpp  the check
+    Resources/          the app's icon, and Icon.cs, which draws it
     installer/          the Inno Setup script, the zip's README, and mac/: the Mac's install
-                        script and READ ME FIRST, and how its build makes the disks
+                        script and READ ME FIRST, and how its build makes the disks (the
+                        Linux build's too); linux/: the Linux READ ME FIRST, and the .deb's
+                        launcher, menu entry and install scripts
 
 ## Licence
 

@@ -1,1 +1,5 @@
 *.sh text eol=lf
+installer/linux/mzdebirth text eol=lf
+installer/linux/postinst text eol=lf
+installer/linux/postrm text eol=lf
+installer/linux/*.desktop text eol=lf

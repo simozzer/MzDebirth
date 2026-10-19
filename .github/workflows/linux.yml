@@ -1,0 +1,209 @@
+#
+# MzDebirth for Linux: a 64-bit x86 build for Ubuntu 22.04 and later, and other distributions
+# as new, as a beta - the app, the Mz950's disks beside it in disks/, and a read-me, in a
+# .tar.gz to unpack anywhere and run.
+#
+# Built on Ubuntu 22.04, the oldest the runners offer, so it runs on that and everything since:
+# a program built against an older glibc runs on newer ones, not the other way round.
+#
+# Runs on every push to main, as a check that the Linux build still builds, and keeps the
+# archive on the run for two weeks. The release workflow calls it for each tag, after the
+# Windows job has made the release, and it attaches the archive there.
+#
+# The rack plays the synths' own engines, compiled from their repositories, so those are
+# checked out beside this one, as on Windows. The Mz950's disks are made here too, by its
+# generator built with the .NET SDK (installer/mac/MakeDisks.csproj, which is not Mac-only).
+#
+# A compile error is read back through the API rather than from the log: the first forty
+# "error:" lines become annotations, which the check-runs API serves without signing in.
+#
+name: linux
+
+on:
+  push:
+    branches: [main]
+  # Run by hand, it builds the branch it is run on; given a release, it attaches the downloads
+  # to that one too - for a release out before the Linux build was, its code unchanged since.
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "An existing release's tag to attach the Linux downloads to (optional)"
+        type: string
+        required: false
+  workflow_call:
+    inputs:
+      tag:
+        description: "The release to attach the archive to"
+        type: string
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  JUCE_TAG: "9.0.2"             # the same JUCE as the Windows build
+  TAG: ${{ inputs.tag || inputs.release }}
+
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.sha }}
+
+      # What JUCE's standalone app needs on Linux: ALSA for sound (PipeWire and PulseAudio both
+      # take ALSA; JACK is left off, as JUCE leaves it), FreeType and Fontconfig for text, X11
+      # for the window. No WebKit or curl - both are switched off.
+      - name: The libraries JUCE builds against
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            g++ cmake ninja-build pkg-config \
+            libasound2-dev \
+            libfreetype-dev libfontconfig1-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev
+
+      - name: JUCE, the synths and the PCF, beside the repository
+        run: |
+          git clone --depth 1 --branch "$JUCE_TAG" https://github.com/juce-framework/JUCE ../JUCE
+          for synth in Mz101 Mz303 Mz808 Mz909 Mz950 MzPCF; do
+            git clone --depth 1 "https://github.com/simozzer/$synth" "../$synth"
+          done
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Mz950's disks
+        run: |
+          mkdir -p ../Mz950/disks
+          dotnet run --project installer/mac/MakeDisks.csproj -c Release --property:SynthRoot="$PWD/../Mz950" -- "$PWD/../Mz950/disks"
+          test -f ../Mz950/disks/DRUMS.hfe || { echo "::error::the disk generator wrote no DRUMS.hfe"; exit 1; }
+
+      - name: Configure
+        run: |
+          set -o pipefail
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release 2>&1 | tee configure.log || {
+            grep -E "Error|error" configure.log | head -40 | while IFS= read -r l; do echo "::error::$l"; done
+            exit 1
+          }
+
+      - name: Build
+        run: |
+          set -o pipefail
+          cmake --build build --parallel 2>&1 | tee build.log || {
+            grep -E "error:|Error [0-9]" build.log | head -40 | while IFS= read -r l; do echo "::error::$l"; done
+            exit 1
+          }
+
+      - name: The sequencer check, as on Windows
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Package, as a beta
+        run: |
+          ver=$(sed -n "s/^project(MzDebirth VERSION \([0-9.]*\).*/\1/p" CMakeLists.txt)
+          pkg="MzDebirth-$ver-linux-x86_64-beta"
+          out="dist/$pkg"
+          mkdir -p "$out/disks"
+
+          app=$(find build/MzDebirth_artefacts -type f -name MzDebirth -path "*Standalone*" | head -1)
+          test -n "$app" || { echo "::error::no MzDebirth binary was built"; exit 1; }
+          cp "$app" "$out/MzDebirth"
+          strip "$out/MzDebirth"
+          chmod +x "$out/MzDebirth"
+          cp ../Mz950/disks/*.hfe "$out/disks/"
+          cp "installer/linux/READ ME FIRST.txt" LICENSE README.md "$out/"
+          cp Resources/icon-256.png "$out/MzDebirth.png"
+
+          # what it needs at run time, for the read-me's sake, and for the log
+          ldd "$out/MzDebirth" | sed 's/ (0x.*//'
+
+          (cd dist && tar -czf "$pkg.tar.gz" "$pkg")
+          echo "PKG=$pkg" >> "$GITHUB_ENV"
+          echo "VER=$ver" >> "$GITHUB_ENV"
+
+      #
+      # The same, as a .deb for Ubuntu, Debian and their kind: the app and its disks in
+      # /opt/MzDebirth, a `mzdebirth` command, and a menu entry. apt installs what it needs -
+      # libasound2 by either of its names, as Ubuntu 24.04 renamed it - and ALSA's PulseAudio
+      # plugin with it, which WSL needs for sound; postinst points ALSA at it there, and only
+      # there.
+      #
+      - name: Package as a .deb
+        run: |
+          deb="mzdebirth_${VER}_amd64"
+          root="dist/$deb"
+          mkdir -p "$root/DEBIAN" "$root/opt/MzDebirth" "$root/usr/bin" "$root/usr/share/applications" \
+                   "$root/usr/share/icons/hicolor/256x256/apps" "$root/usr/share/doc/mzdebirth"
+
+          cp "dist/$PKG/MzDebirth" "$root/opt/MzDebirth/"
+          cp -r "dist/$PKG/disks" "$root/opt/MzDebirth/"
+          chmod 644 "$root/opt/MzDebirth/disks/"*
+          install -m 755 installer/linux/mzdebirth "$root/usr/bin/mzdebirth"
+          install -m 644 installer/linux/mzdebirth.desktop "$root/usr/share/applications/"
+          install -m 644 Resources/icon-256.png "$root/usr/share/icons/hicolor/256x256/apps/mzdebirth.png"
+          install -m 644 LICENSE "$root/usr/share/doc/mzdebirth/copyright"
+          install -m 644 README.md "$root/usr/share/doc/mzdebirth/"
+          install -m 755 installer/linux/postinst installer/linux/postrm "$root/DEBIAN/"
+
+          size=$(du -sk "$root" --exclude=DEBIAN | cut -f1)
+          cat > "$root/DEBIAN/control" <<EOF
+          Package: mzdebirth
+          Version: $VER
+          Architecture: amd64
+          Maintainer: Simon Moscrop <simozzer@users.noreply.github.com>
+          Installed-Size: $size
+          Depends: libc6 (>= 2.35), libstdc++6 (>= 11), libasound2 | libasound2t64, libfreetype6, libfontconfig1, libx11-6, libxext6, libxinerama1, libxrandr2, libxcursor1, libxrender1
+          Recommends: libasound2-plugins
+          Section: sound
+          Priority: optional
+          Homepage: https://github.com/simozzer/MzDebirth
+          Description: rack of the Mz synths, in the spirit of ReBirth RB-338 (beta)
+           Five machines - Mz303, Mz101, Mz808, Mz909 and Mz950 - played from a step
+           sequencer, with an Arrange window for whole songs, recording, automation and
+           export to WAV or FLAC. Includes the Mz950's sample disks.
+          EOF
+          sed -i 's/^          //' "$root/DEBIAN/control"
+
+          dpkg-deb --root-owner-group --build "$root" "dist/$deb.deb"
+          dpkg-deb --info "dist/$deb.deb"
+          dpkg-deb --contents "dist/$deb.deb"
+          echo "DEB=$deb" >> "$GITHUB_ENV"
+
+          (cd dist && sha256sum "$PKG.tar.gz" "$deb.deb" | tee "SHA256SUMS-linux.txt")
+
+      - name: Keep the build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PKG }}
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/SHA256SUMS-linux.txt
+          retention-days: 14
+          if-no-files-found: error
+
+      #
+      # The release for the tag is found by listing them all, drafts too: looked up by its tag,
+      # GitHub does not return a draft, and the Windows job has usually just made one. Never
+      # made here - two jobs each making a draft is how a release ends up twice.
+      #
+      - name: Attach to the release
+        if: env.TAG != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          id=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+                 --jq "[.[] | select(.tag_name == \"$TAG\")] | sort_by(.draft) | .[0].id // empty")
+          if [ -z "$id" ]; then echo "::error::no release for $TAG to attach the Linux archive to"; exit 1; fi
+
+          for f in "dist/$PKG.tar.gz" "dist/$DEB.deb" dist/SHA256SUMS-linux.txt; do
+            name=$(basename "$f")
+            for old in $(gh api "repos/$GITHUB_REPOSITORY/releases/$id/assets" --jq ".[] | select(.name == \"$name\") | .id"); do
+              gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$old"
+            done
+            curl -sSf -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Content-Type: application/octet-stream" \
+                 --data-binary @"$f" "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$id/assets?name=$name" > /dev/null
+            echo "  $name"
+          done

@@ -1,0 +1,9 @@
+#!/bin/sh
+# What postinst wrote under WSL goes with the package.
+set -e
+
+if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+    rm -f /etc/alsa/conf.d/99-mzdebirth-wsl.conf
+fi
+
+exit 0

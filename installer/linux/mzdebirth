@@ -1,0 +1,4 @@
+#!/bin/sh
+# MzDebirth, as the .deb installs it: the app and its disks live together in /opt/MzDebirth,
+# where the app looks for disks/ beside itself. This puts a `mzdebirth` command on the path.
+exec /opt/MzDebirth/MzDebirth "$@"
