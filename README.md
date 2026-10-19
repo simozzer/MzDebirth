@@ -88,7 +88,7 @@ each track *parts*: notes of any length at any position, not 16-step patterns. T
 still a click away, for the sound: every knob, fader and effect plays the song as it plays
 the patterns, and a track's **RACK** goes straight to its machine.
 
-![The Arrange window with the demo song: a track for each machine, each with its RACK switch, and the rolls and risers building to each drop, with the breakdown between](docs/img/arrange.png)
+![The Arrange window with the demo song: a track for each machine, each with its RACK switch and AUTOMATION selector, the FX row under them, the rolls and risers building to each drop, and the automation drawn over the parts - the filters opening and the long roll's snare level climbing](docs/img/arrange.png)
 
 The **demo song** a new rack opens with shows the way: bank A's grooves laid out over 64
 bars at 132 bpm, with parts written for it. In the first build the kick drops away, a 909
@@ -369,5 +369,5 @@ Created by Simon Moscrop.
 Free software under the GNU AGPL v3, as the synths it plays; see LICENSE.
 
 ReBirth and RB-338 are Propellerhead's; TB-303, SH-101, TR-808 and TR-909 are Roland's; S900
-and S950 are Akai's; Mixed In Key is Mixed In Key LLC's. MzDebirth is an independent project
-and is not affiliated with any of them.
+and S950 are Akai's; Cubase is Steinberg's; Ableton Live is Ableton's; Mixed In Key is Mixed
+In Key LLC's. MzDebirth is an independent project and is not affiliated with any of them.
