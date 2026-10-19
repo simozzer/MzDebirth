@@ -194,6 +194,10 @@ public:
     // over from its track (see Channel::liveWanted)
     static inline std::function<bool()> songPlaying;
 
+    // what it shows changed by hand - another pattern or bank, PASTE, CLEAR, STEPS - for a step
+    // roll beside it to show the same, playing or not
+    std::function<void()> onChange;
+
     void paint(juce::Graphics&) override;
     void resized() override;
 

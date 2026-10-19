@@ -176,7 +176,7 @@ void PartLane::paintAutomation(juce::Graphics& g, int row, int owner, const std:
     {
         const auto& lane = lanes[l];
         const int param = rack.paramIndex(owner, lane.param);
-        if (param < 0 || lane.points.empty()) continue;
+        if (param < 0 || lane.points.empty() || ! state.shows(owner, lane.param)) continue;
         const float lo = rack.paramLo(owner, param), hi = rack.paramHi(owner, param);
         const bool stepped = rack.paramStepped(owner, param);
         auto yOf = [&] (float v) { return top + height * (1.0f - juce::jlimit(0.0f, 1.0f, (v - lo) / juce::jmax(1.0e-6f, hi - lo))); };
@@ -195,8 +195,23 @@ void PartLane::paintAutomation(juce::Graphics& g, int row, int owner, const std:
 
         g.setColour(juce::Colours::black.withAlpha(0.6f));
         g.strokePath(path, juce::PathStrokeType(3.0f));
-        g.setColour(inks[l % (sizeof inks / sizeof inks[0])].withAlpha(0.9f));
+        const auto ink = inks[l % (sizeof inks / sizeof inks[0])];
+        g.setColour(ink.withAlpha(0.9f));
         g.strokePath(path, juce::PathStrokeType(1.5f));
+
+        // one control picked to show: its name, at the right of the row, where it is easy to find
+        if (owner >= 0 && owner < Rack::owners && state.shownAutomation[(size_t) owner] == lane.param)
+        {
+            juce::String name(rack.paramName(owner, param));
+            if (owner != Rack::FX && param >= rack.knobCount(owner)) name = "MIXER " + name;
+            g.setFont(fonts::bold(9.5f));
+            const float w = juce::GlyphArrangement::getStringWidth(g.getCurrentFont(), name) + 10.0f;
+            const juce::Rectangle<float> tag(width - w - 8.0f, y + (float) trackHeight - 18.0f, w, 14.0f);
+            g.setColour(juce::Colours::black.withAlpha(0.7f));
+            g.fillRoundedRectangle(tag, 3.0f);
+            g.setColour(ink);
+            g.drawText(name, tag, juce::Justification::centred);
+        }
     }
 }
 

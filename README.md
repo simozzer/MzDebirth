@@ -91,10 +91,14 @@ the patterns, and a track's **RACK** goes straight to its machine.
 ![The Arrange window with the demo song: a track for each machine, each with its RACK switch, and the rolls and risers building to each drop, with the breakdown between](docs/img/arrange.png)
 
 The **demo song** a new rack opens with shows the way: bank A's grooves laid out over 64
-bars at 132 bpm, with parts written for it. In each build the kick drops away, a 909 snare
-roll speeds up from quarters to 32nds, and a 101 riser climbs C minor. Each build cuts out a
-beat before the drop, which lands with a crash. The breakdown holds the 101 long over the
-chords, gliding between them. The 909's track carries both its grooves and the rolls, and
+bars at 132 bpm, with parts written for it. In the first build the kick drops away, a 909
+snare roll speeds up from quarters to 32nds, and a 101 riser climbs C minor. Each build cuts
+out a beat before the drop, which lands with a crash. The breakdown holds the 101 long over
+the chords, gliding between them, and halfway through it a long snare roll starts, almost
+silent, and builds for eight bars into the second drop. The song has automation too: the
+909's snare level brings the rolls up, the 303's filter opens as the acid line comes in and
+through each build, the 101's filter opens with each riser, and its reverb is turned up for
+the breakdown. The 909's track carries both its grooves and the rolls, and
 the 101's both the lead and the risers and pad, which take turns.
 
 - **SONG MODE** (beside the tabs) chooses what plays the machines: the song, or - off, as
@@ -118,8 +122,9 @@ the 101's both the lead and the risers and pad, which take turns.
   track, S solos it, SH has it swing with the SHUFFLE knob, and **RACK** shows that machine
   in the rack, ringed for a moment, to turn its knobs. Right-click a track to rename or
   recolour it, or to clear its automation. **A** beside a track's name means it has
-  automation, drawn as lines over its lane. The **FX** row under the tracks holds the effects
-  units' automation. A song saved by 0.5 or before with two tracks for one machine opens with them
+  automation, drawn as lines over its lane, and the **AUTOMATION** selector under the name
+  picks which of them to show. The **FX** row under the tracks holds the effects units'
+  automation. A song saved by 0.5 or before with two tracks for one machine opens with them
   merged into one, sounding as it did.
 - **The ruler:** click to move the cursor (and the song, while it plays). Drag the **L** and
   **R** flags for the locators, or shift-drag to set both. Double-click to turn the cycle
@@ -254,6 +259,9 @@ without picking a pattern.
 - In the Arrange window, each track draws its automation as lines over its lane, low to high
   across the control's range, and shows an **A** beside its name when it has any. The effects
   units' automation is on the **FX** row under the tracks.
+- The **AUTOMATION** selector along the foot of each track, and of FX, chooses which lines
+  it draws: all of them, none, or one control's, which is then labelled at the right of the
+  lane.
 - To clear a track's automation, right-click it and choose **Clear automation**. Right-click
   **FX** to clear the effects units'. Ctrl+Z brings it back.
 
@@ -324,10 +332,12 @@ changes, checks each effect and every factory groove, generates in all 24 keys, 
 each machine, before the app is built round it. It also holds the song to its sample: every
 factory groove made into parts must play bit for bit as its patterns do. The cycle, STOP,
 undo, a song edited while it plays, a part stretched to loop, a pattern played over the
-song, a take, an overdub and automation played back are each checked. The demo song is
-played through and held to its shape: drops louder than the intro and the breakdown, and a
-beat of near silence before each. It links no JUCE. Without the disks it skips the Mz950's checks and says so;
-`-Release` will not go on without them.
+song, a take, an overdub and automation played back are each checked. Every control on the
+rack - 155 of them - is moved alone, by hand and by the song, and must move nothing else. The
+demo song is played through and held to its shape: drops louder than the intro and the
+breakdown, a beat of near silence before each, the long roll's snare level climbing, and
+every knob back where it started. It links no JUCE. Without the disks it skips the Mz950's
+checks and says so; `-Release` will not go on without them.
 
 Pushing a version tag (`git push origin v0.3.0`) builds the installer and zip on GitHub -
 disks and all - and attaches them to a draft release, with the notes in

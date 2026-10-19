@@ -222,6 +222,7 @@ SamplerRack::SamplerRack(Mz950& s, Channel& c, std::function<bool()> p, const Th
     : sampler(s), playing(p), theme(t), patterns(s.track, c, p), roll(s.track), strip(c, t.name.toUpperCase())
 {
     addAndMakeVisible(patterns);
+    patterns.onChange = [this] { roll.repaint(); };
 
     loadDisk.setShowsLed(false);
     loadDisk.setTooltip("Open an S900/S950 disk image - .hfe, or a plain sector image.");

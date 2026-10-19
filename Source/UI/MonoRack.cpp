@@ -219,6 +219,7 @@ MonoRack::MonoRack(Track<BassPattern>& track, Channel& c, std::function<bool()> 
       patterns(track, c, p), roll(track, hasAccent), strip(c, t.name.toUpperCase())
 {
     addAndMakeVisible(patterns);
+    patterns.onChange = [this] { roll.repaint(); };
     fold.setInk(t.ink);
     fold.onToggle = [this] { roll.setVisible(fold.isOpen()); if (onFold) onFold(); };
     addAndMakeVisible(fold);

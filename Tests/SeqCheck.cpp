@@ -858,7 +858,7 @@ void keys()
 
 namespace
 {
-    void publish(Rack& r, const Song& s) { r.publish(std::make_unique<Playback>(compile(s))); }
+    void publish(Rack& r, const Song& s) { r.publish(std::make_unique<Playback>(compile(s, &r))); }
 
     Note note(int tick, int length, int pitch, int velocity = 100)
     {
@@ -1121,6 +1121,116 @@ void automation()
     play(r, 60, 500, [] (int, auto&, auto&) {});   // into the second bar
     check(std::abs(r.fx.get(decay) - 0.9f) < 1.0e-4f && decayBefore >= 1, "the effects units' knobs are played too",
           fmt("%.2f", r.fx.get(decay)));
+}
+
+//
+// Every control apart from every other: each has an id of its own on its machine (automation
+// finds its lane by it), and each moved alone - by hand or by the song's automation - moves
+// nothing else on the rack: not another of its machine's, nor its channel's, nor another
+// machine's, nor the effects units'.
+//
+void controlsApart()
+{
+    std::printf("\nevery control apart\n");
+
+    Rack r;
+    r.prepare(48000, 500);
+    r.tempo = 120;
+
+    int total = 0;
+    bool unique = true;
+    std::string clash;
+    for (int o = 0; o < Rack::owners; ++o)
+        for (int i = 0; i < r.paramCount(o); ++i, ++total)
+            for (int j = 0; j < i; ++j)
+                if (r.paramId(o, i) == r.paramId(o, j)) { unique = false; clash = r.paramId(o, i); }
+    check(unique && total > 100, "no two controls on a machine share an id",
+          unique ? fmt("%d controls", total) : clash);
+
+    // the mixer strips name their controls by place - see MixerStrip - so the places must hold
+    const char* const mixer[] = { "mixLevel", "mixPan", "mixDelay", "mixReverb", "mixMute", "mixDist", "mixPcf", "mixComp" };
+    bool inPlace = true;
+    for (int m = 0; m < Rack::channels; ++m)
+        for (int k = 0; k < 8; ++k) inPlace &= r.paramId(m, r.knobCount(m) + k) == mixer[k];
+    check(inPlace, "each channel's controls in the places its mixer strip knows them by");
+
+    // a value for a control unlike the one it has
+    auto other = [&] (int o, int i)
+    {
+        const float lo = r.paramLo(o, i), hi = r.paramHi(o, i), now = r.paramGet(o, i);
+        if (r.paramStepped(o, i)) return now > lo + 0.5f ? lo : std::min(hi, lo + 1.0f);
+        const float v = lo + (hi - lo) * 0.37f;
+        return std::abs(v - now) > (hi - lo) * 0.1f ? v : lo + (hi - lo) * 0.81f;
+    };
+    auto snapshot = [&]
+    {
+        std::vector<std::vector<float>> all(Rack::owners);
+        for (int o = 0; o < Rack::owners; ++o)
+            for (int i = 0; i < r.paramCount(o); ++i) all[(size_t) o].push_back(r.paramGet(o, i));
+        return all;
+    };
+    // what else moved, besides the one control
+    auto others = [&] (const std::vector<std::vector<float>>& before, int o0, int i0)
+    {
+        std::string moved;
+        const auto after = snapshot();
+        for (int o = 0; o < Rack::owners; ++o)
+            for (int i = 0; i < r.paramCount(o); ++i)
+                if (! (o == o0 && i == i0) && after[(size_t) o][(size_t) i] != before[(size_t) o][(size_t) i])
+                    moved += (moved.empty() ? "" : ", ") + std::to_string(o) + ":" + r.paramId(o, i);
+        return moved;
+    };
+
+    // by hand
+    std::string byHand;
+    int handFailures = 0;
+    for (int o = 0; o < Rack::owners; ++o)
+        for (int i = 0; i < r.paramCount(o); ++i)
+        {
+            const auto before = snapshot();
+            const float v = other(o, i);
+            r.paramSet(o, i, v);
+            const std::string moved = others(before, o, i);
+            const bool took = std::abs(r.paramGet(o, i) - v) < 1.0e-4f;
+            if (! moved.empty() || ! took)
+            {
+                ++handFailures;
+                byHand = std::to_string(o) + ":" + r.paramId(o, i) + (took ? " moved " + moved : " did not take");
+            }
+            r.paramSet(o, i, before[(size_t) o][(size_t) i]);
+        }
+    check(handFailures == 0, "each control moved alone moves only itself", handFailures == 0 ? fmt("%d controls", total) : byHand);
+
+    // by the song: a lane for one control at a time, played for a block
+    r.mode = Mode::Song;
+    std::string bySong;
+    int songFailures = 0;
+    for (int o = 0; o < Rack::owners; ++o)
+        for (int i = 0; i < r.paramCount(o); ++i)
+        {
+            const auto before = snapshot();
+            const float v = other(o, i);
+            Song s = defaultSong();
+            auto& lanes = o == Rack::FX ? s.fx : s.tracks[(size_t) o].automation;
+            lanes.push_back({ r.paramId(o, i), { { 0, v } } });
+            r.publish(std::make_unique<Playback>(compile(s, &r)));
+            r.playing = true;
+            play(r, 2, 500, [] (int, auto&, auto&) {});
+            r.playing = false;
+            play(r, 1, 500, [] (int, auto&, auto&) {});
+            r.collect();
+
+            const std::string moved = others(before, o, i);
+            const bool took = std::abs(r.paramGet(o, i) - v) < 1.0e-4f;
+            if (! moved.empty() || ! took)
+            {
+                ++songFailures;
+                bySong = std::to_string(o) + ":" + r.paramId(o, i) + (took ? " moved " + moved : " did not take");
+            }
+            r.paramSet(o, i, before[(size_t) o][(size_t) i]);
+        }
+    check(songFailures == 0, "and each control the song moves, alone, moves only itself",
+          songFailures == 0 ? fmt("%d lanes", total) : bySong);
 }
 
 // An OVERDUB: the song playing, a pattern picked is recorded over its machine's track for the
@@ -1483,19 +1593,32 @@ void demo()
     check(empty == 0 && s.end() == 64 * ticksPerBar, "sixty-four bars, every track playing",
           fmt("%zu tracks, %d empty, %d bars", s.tracks.size(), empty, s.end() / ticksPerBar));
 
+    // its automation, and the knobs as the rack has them before it plays
+    const int sd = r.paramIndex(Rack::M909, "sdLevel");
+    std::vector<float> settings[Rack::owners];
+    for (int o = 0; o < Rack::owners; ++o)
+        for (int i = 0; i < r.paramCount(o); ++i) settings[o].push_back(r.paramGet(o, i));
+    bool sdLane = false;
+    for (const auto& lane : s.tracks[Rack::M909].automation) sdLane |= lane.param == "sdLevel";
+    check(sdLane && ! s.tracks[Rack::M303].automation.empty() && ! s.tracks[Rack::M101].automation.empty(),
+          "it has automation: the 909's snare level, and the 303's and 101's knobs");
+
     publish(r, s);
     r.playing = true;
 
-    // the level of every beat, as RMS
+    // the level of every beat, as RMS - and the 909's snare level at the top of each
     const double perBeat = 48000.0 * 60.0 / demoTempo;
     const int beats = 64 * 4;
     std::vector<double> energy((size_t) beats, 0.0), count((size_t) beats, 0.0);
+    std::vector<float> sdAt((size_t) beats, -1.0f);
     std::vector<float> l(512), rr(512);
     bool finite = true;
     float peak = 0;
     for (int64_t done = 0; done < (int64_t) (perBeat * beats); done += 512)
     {
         r.render(l.data(), rr.data(), 512);
+        if (const int b = (int) ((double) done / perBeat); b < beats && sdAt[(size_t) b] < 0.0f)
+            sdAt[(size_t) b] = r.paramGet(Rack::M909, sd);
         for (int i = 0; i < 512; ++i)
         {
             const int b = (int) ((double) (done + i) / perBeat);
@@ -1534,6 +1657,17 @@ void demo()
     const double before1 = energy[28 * 4 - 2], before2 = energy[48 * 4 - 2];
     check(gap1 < before1 * 0.5 && gap2 < before2 * 0.5, "a beat of near silence before each drop",
           fmt("%.3f after %.3f, %.3f after %.3f", gap1, before1, gap2, before2));
+
+    // the long roll, from bar 41: the snare level climbing all the way, and back for the drop
+    const float sd41 = sdAt[40 * 4 + 1], sd44 = sdAt[43 * 4], sd47 = sdAt[46 * 4], sd49 = sdAt[48 * 4 + 1];
+    check(sd41 < 2.0f && sd44 > sd41 + 2.0f && sd47 > sd44 + 2.0f && std::abs(sd49 - settings[Rack::M909][(size_t) sd]) < 1.0e-3f,
+          "the long roll's snare level climbs from almost nothing, and is back for the drop",
+          fmt("%.1f, %.1f, %.1f, then %.1f", sd41, sd44, sd47, sd49));
+
+    bool restored = true;
+    for (int o = 0; o < Rack::owners; ++o)
+        for (int i = 0; i < r.paramCount(o); ++i) restored &= std::abs(r.paramGet(o, i) - settings[o][(size_t) i]) < 1.0e-3f;
+    check(restored, "played through, every knob is back where the rack had it");
 }
 
 int main()
@@ -1546,6 +1680,7 @@ int main()
     livePatterns();
     overdub();
     automation();
+    controlsApart();
     tracksAreMachines();
     keys();
     grooves();

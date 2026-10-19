@@ -93,6 +93,60 @@ namespace
         return notes;
     }
 
+    //
+    // The long roll, eight bars less a beat: steady sixteenths for six bars, then
+    // thirty-seconds, accented on the beat, the claps joining for the last bar. It builds by
+    // its volume - the 909's SD LEVEL, turned up the whole way by the song's automation.
+    //
+    std::vector<Note> longRoll()
+    {
+        std::vector<Note> notes;
+        for (int b = 0; b < 8; ++b)
+        {
+            const int hits = b < 6 ? 16 : 32, every = bar / hits;
+            for (int i = 0; i < hits; ++i)
+            {
+                const int t = b * bar + i * every;
+                if (t >= 8 * bar - beat) break;
+                notes.push_back(note(t, step / 2, drum909(tr909::Voice::SD), i % (hits / 4) == 0 ? 127 : 100));
+                if (b == 7 && i % 2 == 0) notes.push_back(note(t, step / 2, drum909(tr909::Voice::CP), 127));
+            }
+        }
+        return notes;
+    }
+
+    //
+    // The song's automation, as a hand on the knobs would have it: a control turned through
+    // runs of points, held at its setting in the rack before each and put back after.
+    //
+    struct Automator
+    {
+        Rack& rack;
+        Song& song;
+
+        float setting(int owner, const char* id) const
+        {
+            const int i = rack.paramIndex(owner, id);
+            return i < 0 ? 0.0f : rack.paramGet(owner, i);
+        }
+
+        void turn(int owner, const char* id, const std::vector<std::vector<AutoPoint>>& runs)
+        {
+            if (rack.paramIndex(owner, id) < 0) return;
+            const float normal = setting(owner, id);
+            std::vector<AutoPoint> points { { 0, normal } };
+            for (const auto& run : runs)
+            {
+                if (run.empty()) continue;
+                points.push_back({ run.front().tick - 1, normal });
+                points.insert(points.end(), run.begin(), run.end());
+                points.push_back({ run.back().tick + step, normal });
+            }
+            auto& lanes = owner == Rack::FX ? song.fx : song.tracks[(size_t) owner].automation;
+            lanes.push_back({ id, points });
+        }
+    };
+
     // A riser: sixteenths climbing C minor a note a beat, from `root`, over four bars.
     std::vector<Note> riser(int root)
     {
@@ -190,8 +244,10 @@ Song demoSong(Rack& rack)
     w.pattern(Beat, A5, 40, 4);
     w.pattern(Perc, A5, 40, 4);
 
-    // 45-48: BUILD - faster from the start, the acid line climbing an octave, a kick roll
-    w.part(Fx, "ROLL", 44, 4 * bar - beat, snareRoll(8));
+    // 41-48: the long roll, under the breakdown's second half and on through the build
+    w.part(Fx, "LONG ROLL", 40, 8 * bar - beat, longRoll());
+
+    // 45-48: BUILD - the acid line climbing an octave, a kick roll
     w.pattern(Acid, A4, 44, 2);
     w.pattern(Acid, A4, 46, 2, beat, 12);
     w.part(Riser, "RISER", 44, 4 * bar - beat, riser(60));
@@ -236,6 +292,38 @@ Song demoSong(Rack& rack)
     song = oneTrackPerMachine(std::move(song));
     song.tracks[Rack::M909].name = "Tops & Rolls";
     song.tracks[Rack::M101].name = "Lead & Pad";
+
+    //
+    // The knobs turned as it goes, each back where the rack had it after:
+    //
+    //   the 303's CUT OFF  opening as the acid line comes in; pushed up through each build
+    //   the 909's SD LEVEL the rolls getting louder - the long one from almost nothing
+    //   the 101's FREQ     opening with each riser
+    //   the 101's REVERB   sent up for the breakdown's long notes
+    //
+    Automator a { rack, song };
+    const float cutoff = a.setting(Rack::M303, "cutoff");
+    const float freq = a.setting(Rack::M101, "cutoff");
+    const float reverb = a.setting(Rack::M101, "mixReverb");
+    auto up = [] (float v, float by) { return std::min(10.0f, v + by); };
+    auto down = [] (float v, float by) { return std::max(0.0f, v - by); };
+
+    a.turn(Rack::M303, "cutoff", {
+        { { 8 * bar, down(cutoff, 4.0f) }, { 16 * bar - step, cutoff } },
+        { { 24 * bar, cutoff }, { 28 * bar - beat, up(cutoff, 3.0f) } },
+        { { 44 * bar, cutoff }, { 48 * bar - beat, 10.0f } },
+    });
+    a.turn(Rack::M909, "sdLevel", {
+        { { 24 * bar, 3.0f }, { 28 * bar - beat, 10.0f } },
+        { { 40 * bar, 0.5f }, { 48 * bar - beat, 10.0f } },
+    });
+    a.turn(Rack::M101, "cutoff", {
+        { { 24 * bar, down(freq, 3.0f) }, { 28 * bar - beat, up(freq, 2.5f) } },
+        { { 44 * bar, down(freq, 2.0f) }, { 48 * bar - beat, up(freq, 3.5f) } },
+    });
+    a.turn(Rack::M101, "mixReverb", {
+        { { 36 * bar, reverb }, { 37 * bar, 0.5f }, { 44 * bar - step, 0.5f } },
+    });
 
     song.left = 0;
     song.right = 64 * bar;

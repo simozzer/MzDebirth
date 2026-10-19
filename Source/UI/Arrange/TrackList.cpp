@@ -40,13 +40,27 @@ juce::Rectangle<int> TrackList::switchBounds(int row, int which) const
     const int offsets[] = { 52, 28, 0, 86 };   // from the right, to each one's right edge
     const int w = widths[which];
     const int right = r.getRight() - 8 - offsets[which];
-    return { right - w, r.getCentreY() - 10, w, 20 };
+    return { right - w, r.getY() + 6, w, 20 };   // on the name's line
+}
+
+// a row's name, on its top line; the machine's goes under it
+juce::Rectangle<int> TrackList::nameBounds(juce::Rectangle<int> row) const
+{
+    return { 30, row.getY() + 5, juce::jmax(0, row.getWidth() - 160), 20 };
+}
+
+// the automation selector, along the foot of a row
+juce::Rectangle<int> TrackList::selectorBounds(int row) const
+{
+    const auto r = rowBounds(row);
+    return { 30, r.getY() + 44, juce::jmax(0, r.getWidth() - 38), 20 };
 }
 
 TrackList::Hit TrackList::hitAt(juce::Point<int> p, int& row) const
 {
     row = rowAt(p.y);
     if (row < 0) return Hit::None;
+    if (selectorBounds(row).contains(p)) return Hit::Shown;
     if (row == fxRow(state.song())) return Hit::Fx;
 
     for (int w = 0; w < 4; ++w)
@@ -55,7 +69,7 @@ TrackList::Hit TrackList::hitAt(juce::Point<int> p, int& row) const
 
     const auto r = rowBounds(row);
     if (p.x < 12) return Hit::Colour;
-    if (p.y > r.getY() + trackHeight / 2 + 2) return Hit::Machine;
+    if (p.y > r.getY() + 24) return Hit::Machine;
     return Hit::Name;
 }
 
@@ -103,15 +117,16 @@ void TrackList::paint(juce::Graphics& g)
         // the name, and the machine under it
         g.setColour(t.mute ? colours::light.withAlpha(0.4f) : colours::light);
         g.setFont(fonts::bold(12.0f));
-        g.drawText(juce::String(t.name), r.withTrimmedLeft(30).withTrimmedRight(130).withHeight(trackHeight / 2 + 4).withTrimmedTop(4),
+        g.drawText(juce::String(t.name), nameBounds(r),
                    juce::Justification::centredLeft);
         g.setColour(colour.withAlpha(0.85f));
         g.setFont(fonts::bold(9.5f));
         g.drawText(juce::String(machineName(t.machine)).toUpperCase(),
-                   r.withTrimmedLeft(30).withTrimmedRight(130).withTrimmedTop(trackHeight / 2 + 2).withTrimmedBottom(4),
+                   nameBounds(r).translated(0, 20).withHeight(14),
                    juce::Justification::centredLeft);
 
         if (! t.automation.empty()) paintBadge(g, r);
+        paintSelector(g, i, t.machine, t.automation);
 
         // M, S, SH, and RACK - never lit, it goes somewhere rather than switching something
         const bool states[4] = { t.mute, t.solo, t.shuffle, false };
@@ -142,15 +157,16 @@ void TrackList::paint(juce::Graphics& g)
 
         g.setColour(colours::light);
         g.setFont(fonts::bold(12.0f));
-        g.drawText("FX", r.withTrimmedLeft(30).withTrimmedRight(130).withHeight(trackHeight / 2 + 4).withTrimmedTop(4),
+        g.drawText("FX", nameBounds(r),
                    juce::Justification::centredLeft);
         g.setColour(colours::light.withAlpha(0.6f));
         g.setFont(fonts::bold(9.5f));
         g.drawText("DIST  PCF  DELAY  REVERB  COMP",
-                   r.withTrimmedLeft(30).withTrimmedTop(trackHeight / 2 + 2).withTrimmedBottom(4),
+                   nameBounds(r).withRight(r.getRight() - 8).translated(0, 20).withHeight(14),
                    juce::Justification::centredLeft);
 
         if (! state.song().fx.empty()) paintBadge(g, r);
+        paintSelector(g, fxRow(state.song()), Rack::FX, state.song().fx);
     }
     g.restoreState();
 
@@ -158,10 +174,91 @@ void TrackList::paint(juce::Graphics& g)
     g.drawVerticalLine(getWidth() - 1, 0.0f, (float) getHeight());
 }
 
+// a control's name, as the selector lists it: a mixer channel's said to be the mixer's
+juce::String TrackList::controlName(int owner, const std::string& param) const
+{
+    const auto& rack = state.processor.rack;
+    const int i = rack.paramIndex(owner, param);
+    if (i < 0) return juce::String(param);
+    const juce::String name(rack.paramName(owner, i));
+    return owner != Rack::FX && i >= rack.knobCount(owner) ? "MIXER " + name : name;
+}
+
+//
+// What the row's lane draws of its automation: every lane, none, or one control's. Dim, and
+// doing nothing, while the row has none.
+//
+void TrackList::paintSelector(juce::Graphics& g, int row, int owner, const std::vector<AutoLane>& lanes) const
+{
+    const auto b = selectorBounds(row).toFloat();
+    const bool any = ! lanes.empty();
+
+    g.setColour(juce::Colour(0xff15171b).withAlpha(any ? 1.0f : 0.5f));
+    g.fillRoundedRectangle(b, 3.0f);
+    g.setColour(juce::Colours::black.withAlpha(0.7f));
+    g.drawRoundedRectangle(b.reduced(0.5f), 3.0f, 1.0f);
+
+    juce::String text = "NO AUTOMATION";
+    if (any)
+    {
+        const auto& shown = state.shownAutomation[(size_t) owner];
+        bool found = false;
+        for (const auto& lane : lanes) found |= lane.param == shown;
+        text = shown == "-" ? juce::String("AUTOMATION: HIDDEN")
+             : found        ? "AUTOMATION: " + controlName(owner, shown)
+                            : "AUTOMATION: ALL (" + juce::String((int) lanes.size()) + ")";
+    }
+
+    g.setColour(colours::light.withAlpha(any ? 0.85f : 0.35f));
+    g.setFont(fonts::bold(9.5f));
+    g.drawText(text, b.reduced(8.0f, 0.0f).withTrimmedRight(14.0f), juce::Justification::centredLeft, true);
+
+    if (any)
+    {
+        juce::Path arrow;
+        const float cx = b.getRight() - 12.0f, cy = b.getCentreY();
+        arrow.addTriangle(cx - 4.0f, cy - 2.0f, cx + 4.0f, cy - 2.0f, cx, cy + 3.0f);
+        g.fillPath(arrow);
+    }
+}
+
+void TrackList::automationMenu(int row)
+{
+    const auto& song = state.song();
+    const bool fx = row == fxRow(song);
+    if (! fx && row >= (int) song.tracks.size()) return;
+    const int owner = fx ? Rack::FX : song.tracks[(size_t) row].machine;
+    const auto lanes = fx ? song.fx : song.tracks[(size_t) row].automation;
+    if (lanes.empty() || owner < 0 || owner >= Rack::owners) return;
+
+    const auto& shown = state.shownAutomation[(size_t) owner];
+    bool found = false;
+    for (const auto& lane : lanes) found |= lane.param == shown;
+
+    juce::PopupMenu m;
+    m.addSectionHeader("Automation shown");
+    m.addItem(1, "All", true, shown.empty() || (shown != "-" && ! found));
+    m.addItem(2, "None", true, shown == "-");
+    m.addSeparator();
+    for (int i = 0; i < (int) lanes.size(); ++i)
+        m.addItem(100 + i, controlName(owner, lanes[(size_t) i].param), true, lanes[(size_t) i].param == shown);
+
+    juce::Component::SafePointer<TrackList> self(this);
+    m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this).withMousePosition(), [self, owner, lanes] (int id)
+    {
+        if (self == nullptr || id == 0) return;
+        auto& shownNow = self->state.shownAutomation[(size_t) owner];
+        if (id == 1)      shownNow.clear();
+        else if (id == 2) shownNow = "-";
+        else if (id >= 100 && id - 100 < (int) lanes.size()) shownNow = lanes[(size_t) (id - 100)].param;
+        self->state.repaintAll();
+    });
+}
+
 // A, on a row that has automation
 void TrackList::paintBadge(juce::Graphics& g, juce::Rectangle<int> row) const
 {
-    const auto b = juce::Rectangle<float>((float) row.getRight() - 152.0f, (float) row.getCentreY() - 8.0f, 16.0f, 16.0f);
+    const auto b = juce::Rectangle<float>((float) row.getRight() - 152.0f, (float) row.getY() + 8.0f, 16.0f, 16.0f);
     g.setColour(colours::stepYellow.withAlpha(0.85f));
     g.fillRoundedRectangle(b, 3.0f);
     g.setColour(colours::ink);
@@ -174,6 +271,11 @@ void TrackList::mouseDown(const juce::MouseEvent& e)
     int row = -1;
     const Hit hit = hitAt(e.getPosition(), row);
     if (row < 0) return;
+    if (hit == Hit::Shown)
+    {
+        automationMenu(row);
+        return;
+    }
     if (hit == Hit::Fx)
     {
         if (e.mods.isPopupMenu()) fxMenu();

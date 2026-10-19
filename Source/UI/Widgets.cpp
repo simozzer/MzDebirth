@@ -367,9 +367,9 @@ PatternPanel::PatternPanel(debirth::TrackBase& t, debirth::Channel& c, std::func
     copy.setTooltip("Copy this pattern, to paste over another.");
     copy.onPress = [this] { clipboard = track.selected.load(); };
     paste.setTooltip("Paste the copied pattern over this one.");
-    paste.onPress = [this] { if (clipboard >= 0) track.copy(clipboard, track.selected.load()); };
+    paste.onPress = [this] { if (clipboard >= 0) track.copy(clipboard, track.selected.load()); if (onChange) onChange(); };
     clear.setTooltip("Clear this pattern.");
-    clear.onPress = [this] { track.clear(track.selected.load()); };
+    clear.onPress = [this] { track.clear(track.selected.load()); if (onChange) onChange(); };
     for (auto* b : { &copy, &paste, &clear })
     {
         b->setShowsLed(false);
@@ -378,7 +378,7 @@ PatternPanel::PatternPanel(debirth::TrackBase& t, debirth::Channel& c, std::func
 
     steps = std::make_unique<LedNumber>(1, stepsPerPattern, stepsPerPattern, 2,
         [this] { return track.pattern(track.selected.load()).len(); },
-        [this] (int v) { track.pattern(track.selected.load()).length = v; });
+        [this] (int v) { track.pattern(track.selected.load()).length = v; if (onChange) onChange(); });
     steps->setTooltip("How many steps this pattern has. Drag up or down; double-click for 16.");
     steps->setWheelEnabled(false);
     addAndMakeVisible(*steps);
@@ -388,6 +388,7 @@ void PatternPanel::select(int index)
 {
     track.selected = juce::jlimit(0, debirth::patternsPerTrack - 1, index);
     if (! playing()) track.current = track.selected.load();
+    if (onChange) onChange();
 }
 
 void PatternPanel::tick(bool blinkPhase)

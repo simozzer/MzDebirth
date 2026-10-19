@@ -6,8 +6,10 @@
 #include "Processor.h"
 #include "UI/Widgets.h"
 
+#include <array>
 #include <functional>
 #include <set>
+#include <string>
 #include <utility>
 
 //
@@ -28,7 +30,7 @@ const char* toolName(int tool);
 const char* snapName(int snap);
 
 constexpr int rulerHeight = 26;
-constexpr int trackHeight = 46;
+constexpr int trackHeight = 72;
 
 // The rows down the window: a track for each machine, then FX - the effects units' automation.
 inline int fxRow(const debirth::Song& s) { return (int) s.tracks.size(); }
@@ -62,6 +64,11 @@ struct State
     int track = 0;                 // the track picked
     std::set<PartRef> selection;   // the parts picked
     bool follow = true;            // keep the playing position in view
+
+    // which automation each row draws, by owner (a machine, or Rack::FX): "" every lane,
+    // "-" none, or one control's id - see TrackList's selector
+    std::array<std::string, debirth::Rack::owners> shownAutomation;
+    bool shows(int owner, const std::string& param) const;
 
     double xOf(double tick) const  { return (tick - scrollTick) * pxPerTick; }
     double tickAt(double x) const  { return x / pxPerTick + scrollTick; }

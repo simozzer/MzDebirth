@@ -33,7 +33,7 @@ public:
     void rename(int track);
 
 private:
-    enum class Hit { None, Colour, Name, Machine, Mute, Solo, Shuffle, Rack, Fx };
+    enum class Hit { None, Colour, Name, Machine, Mute, Solo, Shuffle, Rack, Fx, Shown };
 
     int rowAt(int y) const;
     juce::Rectangle<int> rowBounds(int row) const;
@@ -42,6 +42,11 @@ private:
     void menu(int row);
     void fxMenu();
     void paintBadge(juce::Graphics&, juce::Rectangle<int> row) const;
+    void paintSelector(juce::Graphics&, int row, int owner, const std::vector<debirth::AutoLane>&) const;
+    void automationMenu(int row);
+    juce::String controlName(int owner, const std::string& param) const;
+    juce::Rectangle<int> nameBounds(juce::Rectangle<int> row) const;
+    juce::Rectangle<int> selectorBounds(int row) const;
 
     State& state;
     std::array<bool, debirth::Rack::channels> active {};

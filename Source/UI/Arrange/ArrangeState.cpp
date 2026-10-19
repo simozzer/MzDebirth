@@ -5,6 +5,8 @@
 
 #include <cmath>
 
+using namespace debirth;
+
 namespace arrange
 {
 
@@ -62,6 +64,23 @@ int State::snappedDown(double tick) const
 {
     const int g = grid();
     return juce::jmax(0, (int) std::floor(tick / g) * g);
+}
+
+bool State::shows(int owner, const std::string& param) const
+{
+    if (owner < 0 || owner >= Rack::owners) return true;
+    const auto& shown = shownAutomation[(size_t) owner];
+    if (shown.empty()) return true;
+    if (shown == "-") return false;
+
+    // one control: its lane alone - or, should the row have no lane for it any more, them all
+    const std::vector<AutoLane>* lanes = owner == Rack::FX ? &song().fx : nullptr;
+    for (const auto& t : song().tracks)
+        if (t.machine == owner) lanes = &t.automation;
+    if (lanes != nullptr)
+        for (const auto& lane : *lanes)
+            if (lane.param == shown) return param == shown;
+    return true;
 }
 
 double State::now() const

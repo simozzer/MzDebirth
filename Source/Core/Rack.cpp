@@ -4,6 +4,7 @@
 #include "Rack.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 
 namespace debirth
@@ -223,7 +224,20 @@ std::string Rack::paramName(int owner, int i) const
 {
     if (i < 0 || i >= paramCount(owner)) return {};
     const int knobs = knobCount(owner);
-    if (i < knobs) return withKnobs(const_cast<Rack&>(*this), owner, [i] (auto& k) { return std::string(k.control(i).legend); });
+    if (i < knobs)
+        return withKnobs(const_cast<Rack&>(*this), owner, [i] (auto& k)
+        {
+            // a legend the panel prints more than once - each drum's LEVEL - goes by what its
+            // id begins with too: "sdLevel" is SD LEVEL
+            std::string legend = k.control(i).legend;
+            bool twice = false;
+            for (int j = 0; j < k.size(); ++j) twice |= j != i && legend == k.control(j).legend;
+            if (! twice) return legend;
+            std::string prefix;
+            for (const char* c = k.control(i).id; *c != 0 && std::islower((unsigned char) *c); ++c)
+                prefix += (char) std::toupper((unsigned char) *c);
+            return prefix.empty() ? legend : prefix + " " + legend;
+        });
     return mixerParams[i - knobs].name;
 }
 
