@@ -7,7 +7,7 @@ rack, an [Arrange window](#the-arrange-window) after Cubase on the Atari ST, to 
 patterns out as a song and write parts of any length - or [record](#recording-a-song) the
 rack into it as you play, as ReBirth did.
 
-![The rack: the transport and KEY section; the DIST, PCF, DELAY, REVERB and COMP units; the RACK and ARRANGE tabs and the link to the project page; the Mz303 and the Mz101, each with its pattern section and mixer strip](docs/img/rack.png)
+![The rack: the transport and KEY section; the DIST, PCF, DELAY, REVERB and COMP units; the RACK and ARRANGE tabs, the link to the project page, the OUT meter and LIMIT, and the song position; the Mz303 and the Mz101, each with its pattern section and mixer strip](docs/img/rack.png)
 
 It plays the synths' real engines - [Mz303](https://github.com/simozzer/Mz303),
 [Mz101](https://github.com/simozzer/Mz101), [Mz808](https://github.com/simozzer/Mz808),
@@ -77,6 +77,10 @@ but not yet tried on a real one. If something doesn't work, please
   the Arrange window, where the patterns become a song - see below.
 - In the rack, the display beside **SONG MODE** shows where the song is, in bars, beats and
   ticks: where it's playing, how far a recording has got, or the cursor.
+- **OUT**, in the same row, is the master's meter, and **LIMIT** beside it keeps the output
+  from clipping - see [Effects and the mixer](#effects-and-the-mixer). If LIMIT's light is
+  orange much of the time, turn the MASTER down a little.
+- **EXPORT**, in the Arrange window, saves the song as a WAV or FLAC file.
 - The link between the tabs shows the version you have; click it for the project page,
   where the next version, what's new in it and the issue tracker are.
 
@@ -88,7 +92,7 @@ each track *parts*: notes of any length at any position, not 16-step patterns. T
 still a click away, for the sound: every knob, fader and effect plays the song as it plays
 the patterns, and a track's **RACK** goes straight to its machine.
 
-![The Arrange window with the demo song: a track for each machine, each with its RACK switch and AUTOMATION selector, the FX row under them, the rolls and risers building to each drop, and the automation drawn over the parts - the filters opening and the long roll's snare level climbing](docs/img/arrange.png)
+![The Arrange window with the demo song: EXPORT in the toolbar; a track for each machine, each with its RACK switch and AUTOMATION selector, the FX row under them, the rolls and risers building to each drop, and the automation drawn over the parts - the filters opening and the long roll's snare level climbing](docs/img/arrange.png)
 
 The **demo song** a new rack opens with shows the way: bank A's grooves laid out over 64
 bars at 132 bpm, with parts written for it. In the first build the kick drops away, a 909
@@ -137,6 +141,12 @@ the 101's both the lead and the risers and pad, which take turns.
 - **Ctrl+Z** undoes any edit to the song and **Ctrl+Y** redoes it. **Ctrl+C** and
   **Ctrl+V** copy parts and paste them at the cursor, **Delete** deletes them, and
   **Ctrl+A** picks every part.
+- **EXPORT**, at the right of the toolbar, saves the song as a **WAV** or **FLAC** file, 24-bit
+  at 48 kHz. It renders the whole song, or just between the locators when CYCLE is on, with
+  four seconds more for the delay and reverb to ring out. It runs on a copy of the rack, much
+  faster than real time, so you can keep playing while it works. LIMIT is in the export as
+  it is in the output, so the file never clips. For an MP3, convert the WAV with any
+  converter.
 
 Double-click a part to edit it:
 
@@ -288,6 +298,14 @@ after its fader, pan and the MASTER: green to -12 dB, yellow to 0, and red over 
 that machine alone would take the output past full scale. It falls as a peak meter does,
 with the highest point held for a second.
 
+The master has a meter too: **OUT**, beside the RACK and ARRANGE tabs, reads what the rack
+puts out, left and right, after the MASTER and LIMIT. **LIMIT**, next to it, is a limiter on
+the whole mix, the last thing before the output, so the rack never clips: it holds every
+peak under -0.3 dBFS, looking 1.5 ms ahead so it is ready for each one. It is on to start
+with. Its light is green while it waits and orange while it is taking something off - if it
+is orange much of the time, turn the MASTER or a fader down. Racks saved by 0.9 or before open
+with it on.
+
 ## Keys, for harmonic mixing
 
 The **KEY** section names the key as Mixed In Key does, on the Camelot wheel: **1A-12A**
@@ -332,8 +350,9 @@ changes, checks each effect and every factory groove, generates in all 24 keys, 
 each machine, before the app is built round it. It also holds the song to its sample: every
 factory groove made into parts must play bit for bit as its patterns do. The cycle, STOP,
 undo, a song edited while it plays, a part stretched to loop, a pattern played over the
-song, a take, an overdub and automation played back are each checked. Every control on the
-rack - 155 of them - is moved alone, by hand and by the song, and must move nothing else. The
+song, a take, an overdub, automation played back, LIMIT and EXPORT are each checked. Every
+control on the rack - 156 of them - is moved alone, by hand and by the song, and must move
+nothing else. The
 demo song is played through and held to its shape: drops louder than the intro and the
 breakdown, a beat of near silence before each, the long roll's snare level climbing, and
 every knob back where it started. It links no JUCE. Without the disks it skips the Mz950's
@@ -354,7 +373,7 @@ cmake.
 
     Source/Core         the clock, patterns, machines, effects, mixer, keys and grooves - no JUCE
                         Song.* and SongPlayer.h: the song, and how the audio thread plays it;
-                        Recorder.*: takes and overdubs; DemoSong.*: the demo song
+                        Recorder.*: takes and overdubs; Bounce.*: EXPORT; DemoSong.*: the demo song
     Source/UI           the panels
     Source/UI/Arrange   the Arrange window, and KEY EDIT and DRUM EDIT
     Source/Processor.*  the rack as a JUCE processor, and its saved state

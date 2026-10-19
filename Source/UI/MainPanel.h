@@ -88,6 +88,31 @@ private:
 };
 
 //
+// The master's meter, and LIMIT, beside the tabs where both views see them: what the rack
+// puts out, left and right, after the MASTER and LIMIT. LIMIT's light is green while it is
+// on and doing nothing, and orange while it is taking something off - held a moment, so a
+// single peak is seen.
+//
+class MasterSection final : public juce::Component
+{
+public:
+    explicit MasterSection(DebirthProcessor&);
+
+    void tick();      // from the panel's timer
+    void refresh();   // after a load
+
+    void paint(juce::Graphics&) override;
+    void resized() override;
+
+private:
+    DebirthProcessor& processor;
+    LevelMeter meter;
+    Pad limit { "LIMIT" };
+    int limitIndex = -1;
+    int limitingFor = 0;   // ticks left to show a reduction
+};
+
+//
 // The whole window, at one design size: the transport, the effects units, and under them
 // either the rack, scrolling, or the Arrange window - RACK and ARRANGE, or F1 and F2.
 //
@@ -114,6 +139,7 @@ private:
     void refresh();
     void saveFile();
     void loadFile();
+    void exportFile();
     void showView(int view);   // View::Rack or View::Arrange
     void showMachine(int machine);
 
@@ -129,6 +155,7 @@ private:
 
     // in the rack, where the song is: a take's progress, the song playing, or the cursor
     arrange::LedText songPosition;
+    MasterSection masterSection;
 
     // This version, and where to find the next: the project's page, between the tabs.
     juce::HyperlinkButton projectLink;

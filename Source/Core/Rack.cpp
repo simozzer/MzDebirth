@@ -372,6 +372,7 @@ void Rack::prepare(double sampleRate, int maxBlock)
     delay.prepare(sampleRate, 16.0 * 15.0 / Clock::minTempo + 0.5);
     reverb.prepare(sampleRate);
     masterComp.prepare(sampleRate);
+    limiter.prepare(sampleRate);
 }
 
 Rack::~Rack()
@@ -878,13 +879,29 @@ void Rack::renderBlock(float* left, float* right, int n)
     const float masterTo = master.load() * master.load();
     const float dm = (masterTo - masterGain) * inv;
     float gm = masterGain;
+    float overL = 0.0f, overR = 0.0f;
     for (int i = 0; i < n; ++i)
     {
         gm += dm;
         left[i] *= gm;
         right[i] *= gm;
+        overL = std::max(overL, std::abs(left[i]));
+        overR = std::max(overR, std::abs(right[i]));
     }
     masterGain = masterTo;
+
+    // LIMIT, last of all; and the master's meter, on what goes out
+    limiter.process(left, right, n, settings.limiter != 0);
+    float peakL = 0.0f, peakR = 0.0f;
+    for (int i = 0; i < n; ++i)
+    {
+        peakL = std::max(peakL, std::abs(left[i]));
+        peakR = std::max(peakR, std::abs(right[i]));
+    }
+    raise(masterPeakL, peakL);
+    raise(masterPeakR, peakR);
+    raise(masterOver, std::max(overL, overR));
+    raise(limiting, -limiter.reduction());
 }
 
 //

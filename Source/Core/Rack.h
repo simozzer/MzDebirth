@@ -99,6 +99,15 @@ public:
     float tempoNow() const { return clockTempo.load(std::memory_order_relaxed); }
     std::atomic<float> master  { 0.8f };
 
+    //
+    // The master's meter, raised by the audio thread and taken by the panel, leaving 0: the
+    // loudest sample going out, left and right, after LIMIT; the loudest before it - over 1,
+    // and without LIMIT that would have clipped; and the most LIMIT took off, in dB.
+    //
+    std::atomic<float> masterPeakL { 0.0f }, masterPeakR { 0.0f };
+    std::atomic<float> masterOver { 0.0f };
+    std::atomic<float> limiting { 0.0f };
+
     Mz303 mz303;
     Mz101 mz101;
     Mz808 mz808;
@@ -138,6 +147,9 @@ public:
 
     // any thread: where the song is, in ticks; -1 unless playing in SONG mode
     double songPosition() const { return songTick.load(std::memory_order_relaxed); }
+
+    // the samples the output runs late by: LIMIT's lookahead
+    int latency() const { return limiter.latency(); }
 
     //
     // RECORDING. While it is on and the machines play their patterns, the audio thread logs
@@ -228,6 +240,7 @@ private:
     Reverb reverb;
     std::vector<float> sends, reverbSends;
     Compressor masterComp;
+    Limiter limiter;
 
     // the song: the one playing, the next handed over, and the last handed back
     Playback* playback = nullptr;

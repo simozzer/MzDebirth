@@ -38,6 +38,7 @@ public:
 
     // a track's RACK: the window shows the rack, at that machine
     std::function<void(int machine)> onShowMachine;
+    std::function<void()> onExport;   // EXPORT: the song to an audio file
 
 private:
     void scrollBarMoved(juce::ScrollBar*, double) override;
@@ -54,7 +55,7 @@ private:
     std::unique_ptr<PartEditor> editor;
 
     Pad tools[Tool::count];
-    Pad snap, zoomOut { "-" }, zoomIn { "+" }, undo { "UNDO" }, redo { "REDO" };
+    Pad snap, zoomOut { "-" }, zoomIn { "+" }, undo { "UNDO" }, redo { "REDO" }, exportSong { "EXPORT" };
 
     juce::Rectangle<int> toolbar;
     int seenVersion = -1;

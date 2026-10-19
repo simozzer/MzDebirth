@@ -45,6 +45,9 @@ struct EffectSettings
     float reverbDecay = 0.5f;    // 0 to 1: a small room to a long hall
     float reverbTone  = 0.5f;    // 0 to 1: dark, the highs dying first, to bright
     float reverbPre   = 0.15f;   // 0 to 1: the pre-delay, 0 to 150 ms
+
+    // LIMIT - the master's limiter, last of all
+    int   limiter = 1;
 };
 
 const std::vector<Control<EffectSettings>>& controlsFx();
@@ -93,6 +96,37 @@ public:
 
 private:
     float attack = 0.99f, release = 0.999f, env = 0;
+    float lastReductionDb = 0;
+};
+
+//
+// LIMIT. The master's brickwall limiter, the last thing before the output, so the rack never
+// clips however hard it is pushed. It looks ahead 1.5 ms - the output is that much late - so
+// the gain is already down when a peak arrives, and holds every sample under the ceiling,
+// -0.3 dBFS; it lets go again over about 100 ms. Left and right are limited together, so the
+// image stays where it is. Off, it passes the sound as it is, just as late, so switching it
+// neither clicks nor jumps.
+//
+class Limiter
+{
+public:
+    static constexpr float ceiling = 0.9661f;   // -0.3 dBFS
+
+    void prepare(double rate);
+    void process(float* left, float* right, int n, bool on);
+
+    // the most it took off in the last block, in dB (0 or less)
+    float reduction() const { return lastReductionDb; }
+    int latency() const { return look; }   // in samples
+
+private:
+    int look = 72;                       // the lookahead, in samples
+    std::vector<float> delayL, delayR;   // the sound, `look` samples late
+    std::vector<float> wanted;           // the gain each of the last look + 1 samples wanted
+    std::vector<float> smoothed;         // the last `look` gains, averaged for the attack
+    int delayAt = 0, wantedAt = 0, smoothedAt = 0;
+    double sum = 0;
+    double env = 1.0, release = 0.9998;   // double: near 1 a float can't take the release's small steps
     float lastReductionDb = 0;
 };
 

@@ -3,7 +3,10 @@
 
 #include "MainPanel.h"
 
+#include "Core/Bounce.h"
+
 #include <juce_audio_basics/juce_audio_basics.h>
+#include <juce_audio_formats/juce_audio_formats.h>
 
 using namespace debirth;
 
@@ -198,6 +201,66 @@ void TransportBar::paint(juce::Graphics& g)
     g.drawText("TEMPO", tempo.getBounds().withY(tempo.getY() - 14).withHeight(12), juce::Justification::centredLeft);
     g.drawText("DRAG", drag.getBounds().withY(drag.getY() - 14).withHeight(12), juce::Justification::centred);
     g.drawText("PUSH", push.getBounds().withY(push.getY() - 14).withHeight(12), juce::Justification::centred);
+}
+
+//============================================================================== MasterSection
+
+MasterSection::MasterSection(DebirthProcessor& p) : processor(p)
+{
+    auto& fx = processor.rack.fx;
+    limitIndex = fx.indexOf("limiter");
+
+    meter.setVertical(false);
+    meter.setTooltip("What the rack puts out, left and right, after the MASTER and LIMIT: green to -12 dB, "
+                     "yellow to 0, red over it - where, without LIMIT, it would clip.");
+    addAndMakeVisible(meter);
+
+    limit.setTooltip("LIMIT: a limiter on the master, the last thing before the output, so the rack never "
+                     "clips. Its light is green while it waits, orange while it is taking something off.");
+    limit.onPress = [this]
+    {
+        auto& knobs = processor.rack.fx;
+        knobs.set(limitIndex, knobs.get(limitIndex) > 0.5f ? 0.0f : 1.0f);
+        ControlHooks::move(&knobs, limitIndex, knobs.get(limitIndex));
+        refresh();
+    };
+    addAndMakeVisible(limit);
+    refresh();
+}
+
+void MasterSection::tick()
+{
+    auto& rack = processor.rack;
+    meter.push(rack.masterPeakL.exchange(0.0f), rack.masterPeakR.exchange(0.0f));
+    rack.masterOver.exchange(0.0f);
+
+    // a reduction of a tenth of a dB or more shows for half a second
+    if (rack.limiting.exchange(0.0f) > 0.1f) limitingFor = 15;
+    else if (limitingFor > 0) --limitingFor;
+    refresh();
+}
+
+void MasterSection::refresh()
+{
+    const bool on = processor.rack.fx.get(limitIndex) > 0.5f;
+    limit.setLedColour(on && limitingFor > 0 ? colours::stepOrange : colours::ledGreen);
+    limit.setLit(on);
+}
+
+void MasterSection::resized()
+{
+    auto r = getLocalBounds();
+    limit.setBounds(r.removeFromRight(64));
+    r.removeFromRight(8);
+    r.removeFromLeft(34);   // OUT
+    meter.setBounds(r.withSizeKeepingCentre(r.getWidth(), 14));
+}
+
+void MasterSection::paint(juce::Graphics& g)
+{
+    g.setColour(colours::light.withAlpha(0.75f));
+    g.setFont(fonts::bold(9.5f));
+    g.drawText("OUT", getLocalBounds().removeFromLeft(30), juce::Justification::centredRight);
 }
 
 //============================================================================== the machines' looks
@@ -425,7 +488,7 @@ void RackView::paint(juce::Graphics& g)
 //============================================================================== MainPanel
 
 MainPanel::MainPanel(DebirthProcessor& p)
-    : processor(p), transport(p), effects(p.rack), rack(p), arrangeView(p)
+    : processor(p), transport(p), effects(p.rack), rack(p), arrangeView(p), masterSection(p)
 {
     setLookAndFeel(&look);
     setWantsKeyboardFocus(true);
@@ -462,6 +525,7 @@ MainPanel::MainPanel(DebirthProcessor& p)
 
     rack.onHeightChanged = [this] { resized(); };
     arrangeView.onShowMachine = [this] (int machine) { showMachine(machine); };
+    arrangeView.onExport = [this] { exportFile(); };
 
     rackTab.setTooltip("The rack: the machines' panels, their patterns and the mixer (F1).");
     arrangeTab.setTooltip("The Arrange window: the song, its tracks and parts, as Cubase laid them out (F2).");
@@ -483,6 +547,7 @@ MainPanel::MainPanel(DebirthProcessor& p)
     songPosition.setTooltip("Where the song is, in bars, beats and ticks: how far a take has recorded, "
                             "where the song is playing, or the cursor.");
     addChildComponent(songPosition);
+    addAndMakeVisible(masterSection);
 
     //
     // Where to come back to: the version this is, and the page the next one will be on.
@@ -543,6 +608,7 @@ void MainPanel::timerCallback()
 
     const bool blinkPhase = (++ticks / 8) % 2 == 0;
     transport.tick();
+    masterSection.tick();
     effects.tick();
 
     // SONG MODE: lit when on; blinking while a change waits for the bar
@@ -570,6 +636,7 @@ void MainPanel::timerCallback()
 void MainPanel::refresh()
 {
     transport.refresh();
+    masterSection.refresh();
     effects.refresh();
     rack.refresh();
     resized();   // the step rolls may have folded or unfolded with the load
@@ -630,6 +697,87 @@ void MainPanel::saveFile()
         });
 }
 
+namespace
+{
+    //
+    // EXPORT, on a thread of its own with a progress window: the song played on a copy of
+    // the rack - patterns, knobs, disk and all - into a temporary file, which takes the
+    // chosen one's place only once it is whole. Cancelled, nothing is left behind.
+    //
+    class ExportJob final : public juce::ThreadWithProgressWindow
+    {
+    public:
+        ExportJob(DebirthProcessor& from, const juce::File& f)
+            : ThreadWithProgressWindow("Exporting " + f.getFileName(), true, true), file(f)
+        {
+            copy = std::make_unique<DebirthProcessor>();
+            copy->load(from.save());
+            copy->prepareToPlay(rate, 512);
+            copy->rack.mz950.service();   // the sampler's programme, handed over
+        }
+
+        void run() override
+        {
+            temp = std::make_unique<juce::TemporaryFile>(file);
+            std::unique_ptr<juce::AudioFormat> format;
+            if (file.hasFileExtension("flac")) format = std::make_unique<juce::FlacAudioFormat>();
+            else                               format = std::make_unique<juce::WavAudioFormat>();
+
+            std::unique_ptr<juce::OutputStream> out = temp->getFile().createOutputStream();
+            if (out == nullptr) { error = "Could not write " + temp->getFile().getFullPathName(); return; }
+
+            auto writer = format->createWriterFor(out, juce::AudioFormatWriterOptions()
+                                                           .withSampleRate(rate)
+                                                           .withNumChannels(2)
+                                                           .withBitsPerSample(24));
+            if (writer == nullptr) { error = "Could not make a " + format->getFormatName() + " file."; return; }
+
+            setStatusMessage("Rendering the song...");
+            finished = debirth::bounce(copy->rack, copy->song.song(), rate, tail,
+                [&] (const float* l, const float* r, int n, double done)
+                {
+                    const float* channels[] = { l, r };
+                    if (! writer->writeFromFloatArrays(channels, 2, n)) { error = "Could not write the file."; return false; }
+                    setProgress(done);
+                    return ! threadShouldExit();
+                });
+            writer.reset();   // flushed and closed, before it is moved into place
+
+            if (finished && error.isEmpty() && ! temp->overwriteTargetFileWithTemporary())
+                error = "Could not write " + file.getFullPathName();
+        }
+
+        void threadComplete(bool cancelled) override
+        {
+            if (! cancelled && ! error.isEmpty())
+                juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon, "Not exported", error);
+            delete this;
+        }
+
+    private:
+        static constexpr double rate = 48000.0, tail = 4.0;
+        juce::File file;
+        std::unique_ptr<DebirthProcessor> copy;
+        std::unique_ptr<juce::TemporaryFile> temp;
+        juce::String error;
+        bool finished = false;
+    };
+}
+
+void MainPanel::exportFile()
+{
+    chooser = std::make_unique<juce::FileChooser>("Export the song", racksFolder().getChildFile("Song.wav"), "*.wav;*.flac");
+    chooser->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                             | juce::FileBrowserComponent::warnAboutOverwriting,
+        [this] (const juce::FileChooser& fc)
+        {
+            auto file = fc.getResult();
+            if (file == juce::File()) return;
+            if (! file.hasFileExtension("wav;flac")) file = file.withFileExtension("wav");
+            (new ExportJob(processor, file))->launchThread();
+        });
+}
+
 void MainPanel::loadFile()
 {
     chooser = std::make_unique<juce::FileChooser>("Load a rack", racksFolder(), juce::String("*") + fileSuffix);
@@ -667,6 +815,8 @@ void MainPanel::resized()
     songMode.setBounds(tabs.removeFromRight(120));
     tabs.removeFromRight(6);
     songPosition.setBounds(tabs.removeFromRight(130));
+    tabs.removeFromRight(12);
+    masterSection.setBounds(tabs.removeFromRight(250));
     projectLink.setBounds(tabs.reduced(16, 0));
     r.removeFromTop(gap);
 

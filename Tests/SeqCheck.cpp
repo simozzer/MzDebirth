@@ -11,6 +11,7 @@
 
 #include "Core/DemoSong.h"
 #include "Core/Grooves.h"
+#include "Core/Bounce.h"
 #include "Core/Rack.h"
 #include "Core/Recorder.h"
 
@@ -1670,8 +1671,144 @@ void demo()
     check(restored, "played through, every knob is back where the rack had it");
 }
 
+// LIMIT: whatever goes in, nothing over the ceiling comes out; what was under it comes out
+// as it went in, only later; and switched off, it only delays.
+void limit()
+{
+    std::printf("\nLIMIT\n");
+
+    constexpr double rate = 48000.0;
+    constexpr int n = 512, blocks = 300;
+    const int look = (int) std::lround(rate * 0.0015);
+
+    // a sine three times full scale, a spike ten times it out of nowhere, then quiet again
+    auto signal = [rate] (int64_t i)
+    {
+        const double t = (double) i / rate;
+        if (i == 30000) return 10.0f;
+        if (i < 40000) return (float) (3.0 * std::sin(2.0 * 3.14159265 * 110.0 * t));
+        return (float) (0.5 * std::sin(2.0 * 3.14159265 * 110.0 * t));
+    };
+
+    auto run = [&] (bool on, float& peak, float& loudEnd, double& quietError)
+    {
+        Limiter lim;
+        lim.prepare(rate);
+        std::vector<float> l(n), r(n);
+        peak = 0; loudEnd = 0; quietError = 0;
+        for (int b = 0; b < blocks; ++b)
+        {
+            for (int i = 0; i < n; ++i) l[(size_t) i] = r[(size_t) i] = signal((int64_t) b * n + i);
+            lim.process(l.data(), r.data(), n, on);
+            for (int i = 0; i < n; ++i)
+            {
+                const int64_t at = (int64_t) b * n + i;
+                peak = std::max(peak, std::abs(l[(size_t) i]));
+                if (at > 20000 && at < 29000) loudEnd = std::max(loudEnd, std::abs(l[(size_t) i]));
+                if (at > 120000 + look) quietError = std::max(quietError, (double) std::abs(l[(size_t) i] - signal(at - look)));
+            }
+        }
+    };
+
+    float peak, loud;
+    double quiet;
+    run(true, peak, loud, quiet);
+    check(peak <= Limiter::ceiling + 1.0e-5f, "three times full scale, and a spike of ten, come out under -0.3 dBFS",
+          fmt("peak %.4f", peak));
+    check(loud > Limiter::ceiling * 0.95f, "held up at the ceiling, not squashed below it", fmt("%.4f", loud));
+    check(quiet < 1.0e-6, "once it has let go, a quiet sound comes out as it went in, 1.5 ms late",
+          fmt("off by %.2e", quiet));
+    run(false, peak, loud, quiet);
+    check(peak > 9.9f && quiet < 1.0e-6, "switched off, it only delays", fmt("peak %.2f", peak));
+
+    // the whole rack, every fader and the MASTER right up, the kicks hard
+    Rack r;
+    r.prepare(48000, 512);
+    r.tempo = 120;
+    for (int s = 0; s < 16; s += 2) r.mz808.track.patterns[0].set(tr808::Voice::BD, s, true);
+    for (int s = 0; s < 16; ++s) r.mz909.track.patterns[0].set(tr909::Voice::BD, s, true);
+    for (auto& ch : r.channel) ch.level = 1.0f;
+    r.master = 1.0f;
+    r.playing = true;
+    float out = 0;
+    std::vector<float> l(512), rr(512);
+    for (int b = 0; b < 400; ++b)
+    {
+        r.render(l.data(), rr.data(), 512);
+        for (int i = 0; i < 512; ++i) out = std::max({ out, std::abs(l[(size_t) i]), std::abs(rr[(size_t) i]) });
+    }
+    const float over = r.masterOver.exchange(0.0f), cut = r.limiting.exchange(0.0f);
+    const float meter = std::max(r.masterPeakL.exchange(0.0f), r.masterPeakR.exchange(0.0f));
+    check(over > 1.0f && out <= Limiter::ceiling + 1.0e-5f && cut > 0.0f,
+          "the rack pushed over full scale never clips: LIMIT takes it", fmt("%.2f in, %.4f out, %.1f dB off", over, out, cut));
+    check(std::abs(meter - out) < 1.0e-6f, "and the master's meter reads what goes out", fmt("%.4f", meter));
+}
+
+// EXPORT: the song bounced is the song as it plays - sample for sample, from its first tick,
+// LIMIT's lookahead taken off - and as long as it should be; between the locators with CYCLE.
+void bounces()
+{
+    std::printf("\nEXPORT\n");
+
+    auto rack = [] (Rack& r)
+    {
+        r.prepare(48000, 512);
+        r.tempo = 120;
+    };
+    Song s = defaultSong();
+    std::vector<Note> beats;
+    for (int b = 0; b < 8; ++b) beats.push_back(note(b * ticksPerQuarter, 24, bd808));
+    s.tracks[Rack::M808].parts.push_back(part(0, 2 * ticksPerBar, beats));
+    s.tracks[Rack::M808].automation.push_back({ "mixLevel", { { 0, 0.2f }, { 2 * ticksPerBar, 1.0f } } });
+
+    // bounced
+    Rack a;
+    rack(a);
+    std::vector<float> out;
+    const bool whole = bounce(a, s, 48000, 1.0, [&] (const float* l, const float*, int n, double)
+    {
+        out.insert(out.end(), l, l + n);
+        return true;
+    });
+
+    // played, by hand
+    Rack b;
+    rack(b);
+    b.mode = Mode::Song;
+    b.publish(std::make_unique<Playback>(compile(s, &b)));
+    b.playing = true;
+    std::vector<float> played, l(512), rr(512);
+    while (played.size() < out.size() + 1024)
+    {
+        b.render(l.data(), rr.data(), 512);
+        played.insert(played.end(), l.begin(), l.end());
+    }
+    const int late = b.latency();
+    double worst = 0;
+    for (size_t i = 0; i < out.size(); ++i) worst = std::max(worst, (double) std::abs(out[i] - played[i + (size_t) late]));
+
+    // two bars at 120 is four seconds, and a second of tail
+    check(whole && out.size() == (size_t) (5 * 48000), "two bars at 120 bpm and a second's tail: five seconds",
+          fmt("%zu samples", out.size()));
+    check(worst < 1.0e-6, "sample for sample the song as it plays, from its first tick", fmt("off by %.2e", worst));
+
+    s.cycle = true;
+    s.left = ticksPerBar;
+    s.right = 2 * ticksPerBar;
+    const auto range = bounceRange(s);
+    check(range.from == ticksPerBar && range.to == 2 * ticksPerBar, "with CYCLE on, between the locators");
+
+    Rack c;
+    rack(c);
+    int blocks = 0;
+    const bool stopped = ! bounce(c, s, 48000, 1.0, [&] (const float*, const float*, int, double) { return ++blocks < 3; });
+    check(stopped && blocks == 3, "and it stops when asked");
+}
+
 int main()
 {
+    limit();
+    bounces();
     demo();
     song();
     stops();

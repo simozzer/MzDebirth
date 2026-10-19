@@ -59,8 +59,12 @@ ArrangeView::ArrangeView(DebirthProcessor& p)
     redo.setTooltip("Redo it (Ctrl+Y).");
     undo.onPress = [this] { state.doc().undo(); state.selection.clear(); update(); };
     redo.onPress = [this] { state.doc().redo(); state.selection.clear(); update(); };
+    exportSong.setShowsLed(false);
+    exportSong.setTooltip("Export the song to a WAV or FLAC file - the whole song, or between the locators when "
+                          "CYCLE is on - rendered on a copy of the rack, so playing goes on undisturbed.");
+    exportSong.onPress = [this] { if (onExport) onExport(); };
 
-    for (juce::Component* c : std::initializer_list<juce::Component*> { &snap, &zoomOut, &zoomIn, &undo, &redo })
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &snap, &zoomOut, &zoomIn, &undo, &redo, &exportSong })
         addAndMakeVisible(c);
 
     lane.onOpenPart = [this] (PartRef r) { openPart(r); };
@@ -293,6 +297,8 @@ void ArrangeView::resized()
         redo.setBounds(t.removeFromRight(60));
         t.removeFromRight(4);
         undo.setBounds(t.removeFromRight(60));
+        t.removeFromRight(16);
+        exportSong.setBounds(t.removeFromRight(70));
     }
 
     tracks.setBounds(r.removeFromLeft(trackListWidth).withTrimmedBottom(bar));

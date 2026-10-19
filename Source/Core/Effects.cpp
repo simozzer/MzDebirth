@@ -39,6 +39,7 @@ const std::vector<Control<EffectSettings>>& controlsFx()
         { "reverbDecay",   "DECAY",    0,   1, &S::reverbDecay },
         { "reverbTone",    "TONE",     0,   1, &S::reverbTone },
         { "reverbPre",     "PRE",      0,   1, &S::reverbPre },
+        { "limiter",       "LIMIT",    0,   1, nullptr, &S::limiter, "OFF|ON" },
     };
     return table;
 }
@@ -107,6 +108,67 @@ void Compressor::prepare(double rate)
     attack = timeCoef(0.004f, (float) rate);
     release = timeCoef(0.12f, (float) rate);
     env = 0;
+}
+
+//============================================================================== LIMIT
+
+void Limiter::prepare(double rate)
+{
+    look = std::max(1, (int) std::lround(rate * 0.0015));
+    delayL.assign((size_t) look, 0.0f);
+    delayR.assign((size_t) look, 0.0f);
+    wanted.assign((size_t) look + 1, 1.0f);
+    smoothed.assign((size_t) look, 1.0f);
+    delayAt = wantedAt = smoothedAt = 0;
+    sum = (double) look;
+    env = 1.0;
+    release = std::exp(-1.0 / (rate * 0.1));   // 100 ms
+    lastReductionDb = 0;
+}
+
+//
+// Each sample says what gain it needs to stay under the ceiling. The gain used is the least
+// any of the last look + 1 samples needs - so it is down for a peak from the moment the peak
+// comes in - let go slowly, then averaged over `look` samples: a ramp that reaches the peak's
+// gain exactly as the peak, `look` samples late, goes out. Every gain in that average is
+// at most the peak's, so the peak comes out under the ceiling, with no clipping to tidy up.
+//
+void Limiter::process(float* left, float* right, int n, bool on)
+{
+    if (delayL.empty()) return;
+
+    float least = 1.0f;
+    for (int i = 0; i < n; ++i)
+    {
+        const float peak = std::max(std::abs(left[i]), std::abs(right[i]));
+        wanted[(size_t) wantedAt] = on && peak > ceiling ? ceiling / peak : 1.0f;
+        if (++wantedAt == (int) wanted.size()) wantedAt = 0;
+
+        double hold = 1.0;
+        for (const float w : wanted) hold = std::min(hold, (double) w);
+        env = hold < env ? hold : hold + (env - hold) * release;
+        if (env > 0.99999) env = 1.0;   // let go: quite let go, the sound as it came
+
+        sum += env - (double) smoothed[(size_t) smoothedAt];
+        smoothed[(size_t) smoothedAt] = (float) env;
+        if (++smoothedAt == look) smoothedAt = 0;
+        const float gain = std::min(1.0f, (float) (sum / (double) look));
+        least = std::min(least, gain);
+
+        const float l = delayL[(size_t) delayAt], r = delayR[(size_t) delayAt];
+        delayL[(size_t) delayAt] = left[i];
+        delayR[(size_t) delayAt] = right[i];
+        if (++delayAt == look) delayAt = 0;
+
+        left[i] = l * gain;
+        right[i] = r * gain;
+    }
+
+    // the running sum, kept honest against rounding
+    sum = 0;
+    for (const float s : smoothed) sum += s;
+
+    lastReductionDb = least < 1.0f ? 20.0f * std::log10(std::max(least, 1.0e-6f)) : 0.0f;
 }
 
 void Compressor::process(float* left, float* right, int n, float thresholdDb, float ratio)
