@@ -4,7 +4,8 @@ A rack of the Mz synths, played from a step sequencer, in the spirit of the old 
 RB-338: five machines, each with its own panel, its own patterns and a channel on the mixer,
 all on one clock, with ReBirth's effects units and a reverb along the top. And beside the
 rack, an [Arrange window](#the-arrange-window) after Cubase on the Atari ST, to lay the
-patterns out as a song and write parts of any length.
+patterns out as a song and write parts of any length - or [record](#recording-a-song) the
+rack into it as you play, as ReBirth did.
 
 ![The rack: the transport and KEY section; the DIST, PCF, DELAY, REVERB and COMP units; the RACK and ARRANGE tabs and the link to the project page; the Mz303 and the Mz101, each with its pattern section and mixer strip](docs/img/rack.png)
 
@@ -52,10 +53,11 @@ but not yet tried on a real one. If something doesn't work, please
 - **The window**: drag it wider and everything grows with it; drag it taller (from 800
   pixels) and you see more of the rack at once, or more of the song. It opens at the size
   it was left.
-- **PLAY**, or the space bar. A new rack opens on the **demo song** - an acid rave tune made
-  from the factory grooves, two minutes of intro, builds, drops and a breakdown - in the
-  Arrange window. Turn **SONG MODE** off and every machine plays its own pattern, A1 to
-  start with.
+- **PLAY**, or the space bar, plays and **STOP** stops. A new rack opens on the **demo
+  song** - an acid rave tune made from the factory grooves, two minutes of intro, builds,
+  drops and a breakdown - in the Arrange window. Turn **SONG MODE** off and every machine
+  plays its own pattern, A1 to start with. **REC**, beside them, records the rack into the
+  song - see [Recording a song](#recording-a-song).
 - Pick another pattern on each machine's **PATTERN** pads - bank A to D, then 1 to 8. Picked
   while playing, it blinks, and starts when the pattern playing comes round. The factory
   banks are written so that pattern *n* of every machine plays with pattern *n* of the others:
@@ -73,6 +75,8 @@ but not yet tried on a real one. If something doesn't work, please
   `.mzdebirth` files. The app also remembers where it was left.
 - **RACK** and **ARRANGE** (or F1 and F2), under the effects, switch between the rack and
   the Arrange window, where the patterns become a song - see below.
+- In the rack, the display beside **SONG MODE** shows where the song is, in bars, beats and
+  ticks: where it's playing, how far a recording has got, or the cursor.
 - The link between the tabs shows the version you have; click it for the project page,
   where the next version, what's new in it and the issue tracker are.
 
@@ -98,7 +102,8 @@ the 101's both the lead and the risers and pad, which take turns.
   PLAY in the Arrange window turns it on.
 - **Getting started:** right-click a track's lane and *Insert a pattern* from the rack. It
   becomes a part that plays exactly as the pattern did - slides, accents, ties and shuffle
-  and all - so the factory grooves, GENERATE and TRANSPOSE all feed the song.
+  and all - so the factory grooves, GENERATE and TRANSPOSE all feed the song. Or play the
+  rack into the song live - see [Recording a song](#recording-a-song).
 - **The toolbox** is along the top, and on the right mouse button as on the ST:
   - **ARROW** picks, moves (to another track of the same kind too), copies with Alt-drag, and
     resizes by the right edge. As with a clip in Ableton Live, a part dragged longer repeats
@@ -117,10 +122,11 @@ the 101's both the lead and the risers and pad, which take turns.
 - **The ruler:** click to move the cursor (and the song, while it plays). Drag the **L** and
   **R** flags for the locators, or shift-drag to set both. Double-click to turn the cycle
   on or off.
-- **The transport** along the bottom: back to the start, PLAY from the cursor, STOP, the
-  position in bars, beats and ticks, the locators, CYCLE and FOLLOW. The ST's numeric
-  keypad works as it did: **Enter** plays, **0** stops, **.** goes back to the start, and
-  **/** turns the cycle on and off.
+- **The transport** along the bottom: back to the start, PLAY from the cursor, STOP (which
+  leaves the cursor where the song stopped), the position in bars, beats and ticks, the
+  locators, CYCLE and FOLLOW. The ST's numeric keypad works as it did: **Enter** plays,
+  **0** stops, **.** goes back to the start, and **/** turns the cycle on and off. With
+  **REC** on in the transport at the top, PLAY here records a take.
 - **Ctrl+Z** undoes any edit to the song and **Ctrl+Y** redoes it. **Ctrl+C** and
   **Ctrl+V** copy parts and paste them at the cursor, **Delete** deletes them, and
   **Ctrl+A** picks every part.
@@ -180,32 +186,44 @@ nothing more - its delay and reverb ringing on. It stays lit while stopped. To b
 pick a pattern on its pads: it comes in again at the start of the next bar, from the top of
 that pattern. It works in SONG mode as well, where a stopped machine's notes go by unplayed.
 
-While the song plays, a pattern picked on a machine takes that machine over from its track at
-the next bar and plays from the top, and the song's notes for it go by. Click the lit pattern
-again to hand the machine back to the song at the next bar. STOP lets any patterns go, so the
-next PLAY plays the song as written.
+![The Mz808 and the Mz909, each with its pattern section and mixer strip: pan, the DELAY and REVERB sends, the inserts, the fader and its meter](docs/img/drum-machines.png)
 
-### Recording into the song
+## Recording a song
 
-A song is recorded as it was in ReBirth, by playing the rack live:
+A song is made as it was in ReBirth, by playing the rack live: its patterns go into the
+Arrange window as you pick them. Each stretch of one pattern on a machine becomes a part
+named after it (A1, B3 and so on), so the song shows what you played and when. A pattern
+picked always comes in on the next bar. Knob tweaks aren't recorded.
+
+### A take
+
+A take records every machine, from the cursor:
 
 1. Put the Arrange window's cursor where the take should go. It starts on that bar, or on
    the next if the cursor is part way through one.
 2. Press **REC** in the transport at the top (it blinks), then **PLAY** in either transport,
-   or the space bar. Every machine plays its patterns from the top. The take appears in
-   the Arrange window as it is played, and in the rack the position beside SONG MODE shows
-   how far it has got.
-3. Pick patterns, STOP machines and bring them back as you go. A pattern picked comes in on
-   the next bar, as it always does.
+   or the space bar. Every machine plays its patterns from the top.
+3. Pick patterns, STOP machines and bring them back as you go. The take appears in the
+   Arrange window as you play, and in the rack the display beside SONG MODE shows how far it
+   has got.
 4. Press **STOP** to end the take, or **REC** again to end it and keep playing.
 
-Each stretch of one pattern becomes a part named after it, so the song shows what you played
-and when. A STOPped machine leaves its bars empty. The take records over every track for the
-bars it ran, including the bar it stopped in. One **Ctrl+Z** takes the whole take back.
-Recorded from SONG mode, the rack goes back to SONG mode when the take is over, so PLAY plays
-the song with the take in it. Knob tweaks aren't recorded.
+The take records over every track for the bars it ran, including the bar it stopped in, and
+a STOPped machine leaves its bars empty. Recorded from SONG mode, the rack goes back to SONG
+mode when the take is over, so PLAY plays the song with the take in it. One **Ctrl+Z** takes
+the whole take back.
 
-**Overdubbing** records over a song while it plays:
+### Playing patterns over the song
+
+While the song plays, a pattern picked on a machine takes that machine over from its track
+at the next bar and plays from the top, and the song's notes for it go by. Its pads stay
+dark while the machine follows the song, and light when a pattern has it. Click the lit
+pattern again to hand the machine back to the song at the next bar. STOP lets every pattern
+go, so the next PLAY plays the song as written.
+
+### Overdubbing
+
+An overdub records those patterns into the song as it plays:
 
 1. With the song playing, press **REC**. It lights, and the song plays on as before.
 2. Pick a pattern on any machine. It takes that machine over at the next bar, and from that
@@ -215,9 +233,8 @@ the song with the take in it. Knob tweaks aren't recorded.
    until then), and the overdub ends there.
 
 Only the bars each machine played are recorded over. Machines you didn't touch, and the rest
-of the song, stay as they were. One **Ctrl+Z** takes the whole overdub back.
-
-![The Mz808 and the Mz909, each with its pattern section and mixer strip: pan, the DELAY and REVERB sends, the inserts, the fader and its meter](docs/img/drum-machines.png)
+of the song, stay as they were. STOP ends an overdub too, and one **Ctrl+Z** takes the whole
+of it back.
 
 ## Effects and the mixer
 
@@ -284,11 +301,12 @@ then
 The check (`Tests/SeqCheck.cpp`) holds the sequencer to its timing, slides and pattern
 changes, checks each effect and every factory groove, generates in all 24 keys, and plays
 each machine, before the app is built round it. It also holds the song to its sample: every
-factory groove made into parts must play bit for bit as its patterns do, and the cycle,
-STOP, a take recorded from the rack, undo, and a song edited while it plays are each checked. The demo song is played
-through and held to its shape: drops louder than the intro and the breakdown, and a beat of
-near silence before each. It links no JUCE. Without the disks it skips
-the Mz950's checks and says so; `-Release` will not go on without them.
+factory groove made into parts must play bit for bit as its patterns do. The cycle, STOP,
+undo, a song edited while it plays, a part stretched to loop, a pattern played over the
+song, a take and an overdub are each checked. The demo song is played through and held to
+its shape: drops louder than the intro and the breakdown, and a beat of near silence before
+each. It links no JUCE. Without the disks it skips the Mz950's checks and says so;
+`-Release` will not go on without them.
 
 Pushing a version tag (`git push origin v0.3.0`) builds the installer and zip on GitHub -
 disks and all - and attaches them to a draft release, with the notes in
@@ -305,7 +323,7 @@ cmake.
 
     Source/Core         the clock, patterns, machines, effects, mixer, keys and grooves - no JUCE
                         Song.* and SongPlayer.h: the song, and how the audio thread plays it;
-                        DemoSong.*: the demo song
+                        Recorder.*: takes and overdubs; DemoSong.*: the demo song
     Source/UI           the panels
     Source/UI/Arrange   the Arrange window, and KEY EDIT and DRUM EDIT
     Source/Processor.*  the rack as a JUCE processor, and its saved state
