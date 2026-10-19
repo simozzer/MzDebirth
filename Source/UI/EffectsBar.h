@@ -34,6 +34,7 @@ public:
 
     void tick();
     void refresh();
+    void follow();   // the knobs and switches read back, as the song's automation moves them
 
     void paint(juce::Graphics&) override;
     void resized() override;

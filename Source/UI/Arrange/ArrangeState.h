@@ -30,6 +30,10 @@ const char* snapName(int snap);
 constexpr int rulerHeight = 26;
 constexpr int trackHeight = 46;
 
+// The rows down the window: a track for each machine, then FX - the effects units' automation.
+inline int fxRow(const debirth::Song& s) { return (int) s.tracks.size(); }
+inline int rowCount(const debirth::Song& s) { return fxRow(s) + 1; }
+
 // The track colours: the machines' own first, then more to choose from.
 juce::Colour trackColour(int index);
 constexpr int trackColours = 8;

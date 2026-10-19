@@ -54,14 +54,14 @@ EffectsBar::EffectsBar(Rack& r)
 
     pcfPattern = std::make_unique<LedNumber>(1, pcf::patterns, 1, 2,
         [&fx] { return (int) fx.get(fx.indexOf("pcfPattern")) + 1; },
-        [&fx] (int v) { fx.set(fx.indexOf("pcfPattern"), (float) (v - 1)); });
+        [&fx] (int v) { const int i = fx.indexOf("pcfPattern"); fx.set(i, (float) (v - 1)); ControlHooks::move(&fx, i, fx.get(i)); });
     pcfPattern->setTooltip("Which of the 32 PCF patterns plays the filter. Drag up or down, or use the wheel.");
     addAndMakeVisible(*pcfPattern);
     addAndMakeVisible(pcfDisplay);
 
     delaySteps = std::make_unique<LedNumber>(1, stepsPerPattern, 3, 2,
         [&fx] { return (int) fx.get(fx.indexOf("delaySteps")); },
-        [&fx] (int v) { fx.set(fx.indexOf("delaySteps"), (float) v); });
+        [&fx] (int v) { const int i = fx.indexOf("delaySteps"); fx.set(i, (float) v); ControlHooks::move(&fx, i, fx.get(i)); });
     delaySteps->setTooltip("The delay's time, in sixteenths at the rack's tempo. Drag up or down, or use the wheel.");
     addAndMakeVisible(*delaySteps);
 
@@ -122,6 +122,7 @@ Pad* EffectsBar::toggle(const char* id, const char* text, const char* tip)
     p->onPress = [this, i, p]
     {
         rack.fx.set(i, rack.fx.get(i) > 0.5f ? 0.0f : 1.0f);
+        ControlHooks::move(&rack.fx, i, rack.fx.get(i));
         p->setLit(rack.fx.get(i) > 0.5f);
     };
     toggles.emplace_back(p, i);
@@ -135,6 +136,14 @@ void EffectsBar::tick()
     pcfDisplay.tick();
     pcfPattern->repaint();
     delaySteps->repaint();
+}
+
+void EffectsBar::follow()
+{
+    for (auto& c : owned) refreshControl(*c);
+    for (auto& [pad, i] : toggles) pad->setLit(rack.fx.get(i) > 0.5f);
+    if (pcfPattern != nullptr) pcfPattern->repaint();
+    if (delaySteps != nullptr) delaySteps->repaint();
 }
 
 void EffectsBar::refresh()

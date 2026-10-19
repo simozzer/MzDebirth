@@ -44,7 +44,7 @@ DebirthProcessor::DebirthProcessor()
     : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true))
 {
     // Every change to the song is compiled and handed to the audio thread.
-    song.onChange = [this] (const Song& s) { rack.publish(std::make_unique<Playback>(compile(s))); };
+    song.onChange = [this] (const Song& s) { rack.publish(std::make_unique<Playback>(compile(s, &rack))); };
 
     // Something to play the first time it is opened. A saved state replaces it.
     startAfresh(true);
@@ -154,6 +154,8 @@ void DebirthProcessor::play()
         take.begin((from + ticksPerBar - 1) / ticksPerBar * ticksPerBar, all);
         beforeTake = song.song();
         takeShown = false;
+        tweaks.clear();
+        tweaksChanged = false;
         modeAfterTake = rack.mode.load();
         rack.mode = Mode::Pattern;
         rack.recording = true;
@@ -175,7 +177,8 @@ void DebirthProcessor::drainTake()
         take.add(rack, p);
         more = true;
     }
-    if (! more) return;
+    if (! more && ! tweaksChanged) return;
+    tweaksChanged = false;
 
     if (takeShown && song.version() != takeVersion)
     {
@@ -188,6 +191,7 @@ void DebirthProcessor::drainTake()
     {
         s = beforeTake;
         take.apply(rack, s);
+        putTweaks(s);
     };
     if (takeShown) song.adjust(put);
     else           song.edit(put);
@@ -198,6 +202,17 @@ void DebirthProcessor::drainTake()
 void DebirthProcessor::endTake()
 {
     if (! taking()) return;
+
+    // a control still held is recorded up to here
+    const double at = takeTick();
+    for (auto& t : tweaks)
+        if (t.open)
+        {
+            if (at >= 0.0 && (int) at > t.points.back().tick) t.points.push_back({ (int) at, rack.paramGet(t.owner, t.param) });
+            t.open = false;
+            tweaksChanged = true;
+        }
+
     rack.recording = false;
     drainTake();
     recordReady = false;
@@ -207,6 +222,102 @@ void DebirthProcessor::endTake()
 bool DebirthProcessor::overdubbing() const
 {
     return taking() && take.overdubbing();
+}
+
+//============================================================================== automation by hand
+
+// which control a panel's table and place are: a machine's knobs, the effects units', or a mixer channel's
+bool DebirthProcessor::controlOf(const void* table, int index, int& owner, int& param) const
+{
+    using debirth::Rack;
+    const void* knobs[Rack::owners] = { &rack.mz303.knobs, &rack.mz101.knobs, &rack.mz808.knobs,
+                                        &rack.mz909.knobs, &rack.mz950.knobs, &rack.fx };
+    for (int o = 0; o < Rack::owners; ++o)
+        if (table == knobs[o]) { owner = o; param = index; return param >= 0 && param < rack.paramCount(o); }
+
+    for (int m = 0; m < Rack::channels; ++m)
+        if (table == &rack.channel[m])
+        {
+            owner = m;
+            param = rack.knobCount(m) + index;
+            return index >= 0 && param < rack.paramCount(m);
+        }
+    return false;
+}
+
+double DebirthProcessor::takeTick() const
+{
+    if (! taking() || ! rack.playing.load()) return -1.0;
+    if (overdubbing()) return rack.songPosition();
+    const double clock = rack.clockPosition();
+    return clock < 0.0 ? -1.0 : take.start() + clock;
+}
+
+void DebirthProcessor::controlMoved(const void* table, int index, float value)
+{
+    int owner = 0, param = 0;
+    if (! controlOf(table, index, owner, param)) return;
+    const double at = takeTick();
+    if (at < 0.0) return;
+    const int tick = (int) at;
+
+    // on with the run this control is in, if a hand is on it; or a run of its own, a moment long
+    Tweak* t = nullptr;
+    for (auto it = tweaks.rbegin(); it != tweaks.rend() && t == nullptr; ++it)
+        if (it->open && it->owner == owner && it->param == param) t = &*it;
+    if (t == nullptr || (! t->points.empty() && tick < t->points.back().tick))   // round a cycle: a new run
+    {
+        if (t != nullptr) t->open = false;
+        tweaks.push_back({ owner, param, {}, false });
+        t = &tweaks.back();
+    }
+
+    if (! t->points.empty() && t->points.back().tick == tick) t->points.back().value = value;
+    else                                                     t->points.push_back({ tick, value });
+    tweaksChanged = true;
+}
+
+void DebirthProcessor::controlHeld(const void* table, int index, bool held)
+{
+    int owner = 0, param = 0;
+    if (! controlOf(table, index, owner, param)) return;
+    rack.held[owner][param] = held;
+
+    const double at = takeTick();
+    if (at < 0.0) return;
+    const int tick = (int) at;
+    const float value = rack.paramGet(owner, param);
+
+    if (held)
+    {
+        tweaks.push_back({ owner, param, { { tick, value } }, true });
+    }
+    else
+    {
+        for (auto it = tweaks.rbegin(); it != tweaks.rend(); ++it)
+            if (it->open && it->owner == owner && it->param == param)
+            {
+                if (tick > it->points.back().tick) it->points.push_back({ tick, value });
+                it->open = false;
+                break;
+            }
+    }
+    tweaksChanged = true;
+}
+
+// the moves recorded so far, over the song's automation
+void DebirthProcessor::putTweaks(debirth::Song& s) const
+{
+    for (const auto& t : tweaks)
+    {
+        if (t.points.empty()) continue;
+        std::vector<debirth::AutoLane>* lanes = nullptr;
+        if (t.owner == debirth::Rack::FX) lanes = &s.fx;
+        else
+            for (auto& track : s.tracks)
+                if (track.machine == t.owner) lanes = &track.automation;
+        if (lanes != nullptr) debirth::writeAutomation(*lanes, rack.paramId(t.owner, t.param), t.points);
+    }
 }
 
 //
@@ -243,6 +354,8 @@ void DebirthProcessor::rec()
     take.begin(0, all, true);
     beforeTake = song.song();
     takeShown = false;
+    tweaks.clear();
+    tweaksChanged = false;
     overdubEnding = false;
     recordReady = false;
     rack.recording = true;
@@ -398,6 +511,43 @@ namespace
     // The song: a track a child, a part a child of that, and a part's notes as text - each
     // note its tick, length, pitch and velocity, joined by colons.
     //
+    //
+    // Automation: a lane a child of its track (or of the song, for the effects units), its
+    // control's id and its points as text - each point its tick and value, joined by a colon.
+    //
+    void saveAutomation(juce::ValueTree& parent, const std::vector<AutoLane>& lanes)
+    {
+        for (const auto& lane : lanes)
+        {
+            if (lane.points.empty()) continue;
+            juce::ValueTree a("Automation");
+            a.setProperty("param", juce::String(lane.param), nullptr);
+            juce::StringArray points;
+            for (const auto& p : lane.points) points.add(juce::String(p.tick) + ":" + juce::String(p.value, 4));
+            a.setProperty("points", points.joinIntoString(" "), nullptr);
+            parent.appendChild(a, nullptr);
+        }
+    }
+
+    std::vector<AutoLane> loadAutomation(const juce::ValueTree& parent)
+    {
+        std::vector<AutoLane> lanes;
+        for (const auto& a : parent)
+        {
+            if (! a.hasType("Automation")) continue;
+            AutoLane lane;
+            lane.param = a.getProperty("param").toString().toStdString();
+            for (const auto& token : juce::StringArray::fromTokens(a.getProperty("points").toString(), " ", ""))
+            {
+                const auto f = juce::StringArray::fromTokens(token, ":", "");
+                if (f.size() == 2) lane.points.push_back({ juce::jmax(0, f[0].getIntValue()), f[1].getFloatValue() });
+            }
+            std::stable_sort(lane.points.begin(), lane.points.end(), [] (const AutoPoint& x, const AutoPoint& y) { return x.tick < y.tick; });
+            if (! lane.param.empty() && ! lane.points.empty()) lanes.push_back(std::move(lane));
+        }
+        return lanes;
+    }
+
     juce::ValueTree saveSong(const Song& s, int mode)
     {
         juce::ValueTree t("Song");
@@ -433,8 +583,10 @@ namespace
                 pt.setProperty("notes", notes.joinIntoString(" "), nullptr);
                 tt.appendChild(pt, nullptr);
             }
+            saveAutomation(tt, track.automation);
             t.appendChild(tt, nullptr);
         }
+        saveAutomation(t, s.fx);
         return t;
     }
 
@@ -486,8 +638,10 @@ namespace
                 part.sortNotes();
                 track.parts.push_back(std::move(part));
             }
+            track.automation = loadAutomation(tt);
             s.tracks.push_back(std::move(track));
         }
+        s.fx = loadAutomation(t);
         return s;
     }
 }

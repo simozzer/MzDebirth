@@ -141,7 +141,7 @@ void ArrangeView::update()
     hBar.setRangeLimits(0.0, length, juce::dontSendNotification);
     hBar.setCurrentRange(state.scrollTick, width, juce::dontSendNotification);
 
-    const int total = ((int) song.tracks.size() + 1) * trackHeight;
+    const int total = (rowCount(song) + 1) * trackHeight;
     state.scrollY = juce::jlimit(0, juce::jmax(0, total - lane.getHeight()), state.scrollY);
     vBar.setRangeLimits(0.0, juce::jmax((double) total, (double) lane.getHeight()), juce::dontSendNotification);
     vBar.setCurrentRange(state.scrollY, lane.getHeight(), juce::dontSendNotification);

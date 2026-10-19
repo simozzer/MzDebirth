@@ -63,6 +63,8 @@ public:
     void setLegend(const juce::String& l) { legend = l; repaint(); }
     void refresh();
 
+    std::function<void(bool held)> onHeld;   // taken hold of by the mouse, and let go
+
     void paint(juce::Graphics&) override;
     void resized() override;
 
@@ -289,6 +291,20 @@ struct Theme
 };
 
 //
+// Set by the panel, for recording automation: a control moved by hand, or a knob taken hold
+// of and let go - named by the table its value is in (a machine's Knobs, the effects units',
+// or a mixer Channel) and its place there.
+//
+struct ControlHooks
+{
+    static inline std::function<void(const void* table, int index, float value)> moved;
+    static inline std::function<void(const void* table, int index, bool held)> held;
+
+    static void move(const void* table, int index, float value) { if (moved) moved(table, index, value); }
+    static void hold(const void* table, int index, bool h)      { if (held) held(table, index, h); }
+};
+
+//
 // The knob or switch for one control on a machine's panel, talking straight to its value.
 //
 template <class S>
@@ -300,14 +316,15 @@ std::unique_ptr<juce::Component> makeControl(debirth::Knobs<S>& knobs, int i, co
     {
         auto sw = std::make_unique<Switch>(c.legend, juce::StringArray::fromTokens(c.positions, "|", ""),
                                            [&knobs, i] { return (int) knobs.get(i); },
-                                           [&knobs, i] (int v) { knobs.set(i, (float) v); });
+                                           [&knobs, i] (int v) { knobs.set(i, (float) v); ControlHooks::move(&knobs, i, knobs.get(i)); });
         sw->setLegendInk(theme.ink);
         return sw;
     }
 
     auto k = std::make_unique<Knob>(c.legend, c.lo, c.hi, knobs.defaultOf(i),
                                     [&knobs, i] { return knobs.get(i); },
-                                    [&knobs, i] (float v) { knobs.set(i, v); });
+                                    [&knobs, i] (float v) { knobs.set(i, v); ControlHooks::move(&knobs, i, knobs.get(i)); });
+    k->onHeld = [&knobs, i] (bool h) { ControlHooks::hold(&knobs, i, h); };
     k->setColours(theme.knobCap, theme.knobPointer, theme.ink);
     if (c.lo < 0.0f)
         k->setValueText([] (double v) { const int r = juce::roundToInt(v); return (r > 0 ? "+" : "") + juce::String(r); });

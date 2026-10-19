@@ -33,13 +33,15 @@ public:
     void rename(int track);
 
 private:
-    enum class Hit { None, Colour, Name, Machine, Mute, Solo, Shuffle, Rack };
+    enum class Hit { None, Colour, Name, Machine, Mute, Solo, Shuffle, Rack, Fx };
 
     int rowAt(int y) const;
     juce::Rectangle<int> rowBounds(int row) const;
     juce::Rectangle<int> switchBounds(int row, int which) const;   // 0 M, 1 S, 2 SH, 3 RACK
     Hit hitAt(juce::Point<int>, int& row) const;
     void menu(int row);
+    void fxMenu();
+    void paintBadge(juce::Graphics&, juce::Rectangle<int> row) const;
 
     State& state;
     std::array<bool, debirth::Rack::channels> active {};

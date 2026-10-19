@@ -63,6 +63,12 @@ void DrumRack::showRow()
     }
 }
 
+void DrumRack::follow()
+{
+    for (auto& c : controls) refreshControl(*c);
+    strip.refresh();
+}
+
 void DrumRack::refresh()
 {
     for (auto& c : controls) refreshControl(*c);

@@ -12,6 +12,7 @@
 
 #include <atomic>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace debirth
@@ -156,6 +157,31 @@ public:
     std::atomic<bool> recording { false };
     bool takePlayed(Played&);   // message thread: the next step logged, if there is one
 
+    // any thread: where the clock is, in ticks from where PLAY started it; -1 stopped
+    double clockPosition() const { return clockAt.load(std::memory_order_relaxed); }
+
+    //
+    // THE CONTROLS the song's automation moves, by owner - a machine, or FX, the effects
+    // units - and index: a machine's knobs and switches as its table lists them, then its
+    // mixer channel's (level, pan, the sends, MUTE and the inserts); the effects units' as
+    // their table lists them. A control is saved by its id.
+    //
+    static constexpr int FX = channels, owners = channels + 1, maxParams = 64;
+
+    int knobCount(int owner) const;   // a machine's own, before its mixer channel's
+    int paramCount(int owner) const;
+    std::string paramId(int owner, int i) const;
+    std::string paramName(int owner, int i) const;
+    int paramIndex(int owner, const std::string& id) const;   // -1 if it has none of that id
+    float paramLo(int owner, int i) const;
+    float paramHi(int owner, int i) const;
+    bool paramStepped(int owner, int i) const;
+    float paramGet(int owner, int i) const;
+    void paramSet(int owner, int i, float);   // any thread
+
+    // a control held by hand on the panel: the song's automation leaves it be meanwhile
+    std::atomic<bool> held[owners][maxParams] {};
+
 private:
     int beginBlock(int n);
     void endBlock();
@@ -166,6 +192,7 @@ private:
     void stopMachine(int m);
     void applyStops();          // at the start of a bar: each machine's STOP, as wanted
     void applyLive();           // and in SONG mode, each machine's pattern or its track
+    void applyAutomation();     // the song's automation, where the song is, once a block
     void renderBlock(float* left, float* right, int n);
     void renderMachines(int from, int to);
     void renderPcfEnvelope(int n);
@@ -213,6 +240,7 @@ private:
     std::atomic<int> modeNow { Mode::Pattern };
     std::atomic<int> locateTo { -1 };
     std::atomic<double> songTick { -1.0 };
+    std::atomic<double> clockAt { -1.0 };
 
     // the steps logged while recording: written by the audio thread, read by the panel
     static constexpr int maxPlayed = 8192;

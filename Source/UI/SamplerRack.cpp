@@ -304,6 +304,12 @@ void SamplerRack::showDisk()
     repaint();
 }
 
+void SamplerRack::follow()
+{
+    for (auto& c : controls) refreshControl(*c);
+    strip.refresh();
+}
+
 void SamplerRack::refresh()
 {
     for (auto& c : controls) refreshControl(*c);

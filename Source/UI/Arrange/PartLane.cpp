@@ -155,6 +155,51 @@ void PartLane::paintPart(juce::Graphics& g, juce::Rectangle<float> r, const Part
     g.drawRoundedRectangle(r.reduced(0.5f), 3.0f, selected ? 2.0f : 1.0f);
 }
 
+//
+// A row's automation: each lane a line across it, low to high as its control's range goes,
+// held flat before its first point and after its last - as the control plays it.
+//
+void PartLane::paintAutomation(juce::Graphics& g, int row, int owner, const std::vector<AutoLane>& lanes) const
+{
+    // light over the parts, which are the track's colour; each lane its own, a dark edge under it
+    static const juce::Colour inks[] = { colours::light, colours::stepYellow, colours::ledGreen,
+                                         juce::Colour(0xff7fd6ff), juce::Colour(0xffff9fd0) };
+
+    const float y = rowY(row);
+    if (lanes.empty() || y > (float) getHeight() || y + trackHeight < 0.0f) return;
+
+    const auto& rack = state.processor.rack;
+    const float top = y + 4.0f, height = (float) trackHeight - 8.0f;
+    const float width = (float) getWidth();
+
+    for (size_t l = 0; l < lanes.size(); ++l)
+    {
+        const auto& lane = lanes[l];
+        const int param = rack.paramIndex(owner, lane.param);
+        if (param < 0 || lane.points.empty()) continue;
+        const float lo = rack.paramLo(owner, param), hi = rack.paramHi(owner, param);
+        const bool stepped = rack.paramStepped(owner, param);
+        auto yOf = [&] (float v) { return top + height * (1.0f - juce::jlimit(0.0f, 1.0f, (v - lo) / juce::jmax(1.0e-6f, hi - lo))); };
+
+        juce::Path path;
+        path.startNewSubPath(0.0f, yOf(lane.points.front().value));
+        float lastY = yOf(lane.points.front().value);
+        for (const auto& p : lane.points)
+        {
+            const float x = (float) state.xOf(p.tick), py = yOf(p.value);
+            if (stepped) path.lineTo(x, lastY);
+            path.lineTo(x, py);
+            lastY = py;
+        }
+        path.lineTo(width, lastY);
+
+        g.setColour(juce::Colours::black.withAlpha(0.6f));
+        g.strokePath(path, juce::PathStrokeType(3.0f));
+        g.setColour(inks[l % (sizeof inks / sizeof inks[0])].withAlpha(0.9f));
+        g.strokePath(path, juce::PathStrokeType(1.5f));
+    }
+}
+
 void PartLane::paint(juce::Graphics& g)
 {
     const auto& song = state.song();
@@ -162,12 +207,15 @@ void PartLane::paint(juce::Graphics& g)
 
     g.fillAll(juce::Colour(0xff181b20));
 
-    // the lanes
-    for (int i = 0; i < (int) tracks.size(); ++i)
+    // the lanes, and FX's under them
+    for (int i = 0; i < rowCount(song); ++i)
     {
         const float y = rowY(i);
         if (y > (float) getHeight() || y + trackHeight < 0.0f) continue;
-        g.setColour(i == state.track ? juce::Colour(0xff272c35) : (i % 2 == 0 ? juce::Colour(0xff1f2329) : juce::Colour(0xff1c1f25)));
+        const auto fill = i == fxRow(song)  ? juce::Colour(0xff191b20)
+                        : i == state.track  ? juce::Colour(0xff272c35)
+                        : i % 2 == 0        ? juce::Colour(0xff1f2329) : juce::Colour(0xff1c1f25);
+        g.setColour(fill);
         g.fillRect(0.0f, y, (float) getWidth(), (float) trackHeight);
         g.setColour(juce::Colours::black.withAlpha(0.5f));
         g.drawHorizontalLine(juce::roundToInt(y) + trackHeight - 1, 0.0f, (float) getWidth());
@@ -196,6 +244,11 @@ void PartLane::paint(juce::Graphics& g)
             paintPart(g, r, parts[(size_t) i], colour.withAlpha(moving ? 0.4f : 1.0f), picked, tracks[(size_t) t].machine);
         }
     }
+
+    // the automation, over the parts so it shows on them
+    for (int t = 0; t < (int) tracks.size(); ++t)
+        paintAutomation(g, t, tracks[(size_t) t].machine, tracks[(size_t) t].automation);
+    paintAutomation(g, fxRow(song), Rack::FX, song.fx);
 
     // what a drag would do
     const auto mouse = getMouseXYRelative().toFloat();
@@ -521,7 +574,7 @@ void PartLane::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelD
     }
     else
     {
-        const int total = (int) state.song().tracks.size() * trackHeight;
+        const int total = rowCount(state.song()) * trackHeight;
         state.scrollY = juce::jlimit(0, juce::jmax(0, total - getHeight() + trackHeight), state.scrollY - (int) (w.deltaY * 120.0f));
     }
     state.repaintAll();

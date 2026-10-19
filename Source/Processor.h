@@ -80,6 +80,15 @@ public:
     void endTake();
     bool overdubbing() const;
     bool overdubEnding = false;   // REC pressed again: waiting for the bar
+
+    //
+    // AUTOMATION by hand, from the panel: a control moved, or taken hold of and let go - named
+    // by the table it is in (a machine's knobs, the effects units', or a mixer channel) and its
+    // place there. During a take or an overdub its moves go into the song, over what was there
+    // from where the hand took hold to where it let go. Held, the song's automation leaves it.
+    //
+    void controlMoved(const void* table, int index, float value);
+    void controlHeld(const void* table, int index, bool held);
     bool taking() const { return rack.recording.load(); }
     int takeReached() const { return take.reached(); }   // where in the song a take has got to
 
@@ -98,6 +107,14 @@ private:
     void timerCallback() override;   // the sampler's patch, handed over and collected
     void writeFactoryGrooves();
     void drainTake();   // the steps logged so far, into the take and the song
+
+    // automation recorded by hand: each a run of one control's moves, in the order made
+    struct Tweak { int owner, param; std::vector<debirth::AutoPoint> points; bool open; };
+    std::vector<Tweak> tweaks;
+    bool tweaksChanged = false;
+    bool controlOf(const void* table, int index, int& owner, int& param) const;
+    double takeTick() const;   // where in the song a take or an overdub is; -1 if nowhere
+    void putTweaks(debirth::Song&) const;
 
     debirth::Recorder take;
     debirth::Song beforeTake;

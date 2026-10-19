@@ -258,6 +258,12 @@ int MonoRack::preferredHeight() const
     return juce::jmax(PatternPanel::height, knobs + 12 + FoldBar::height + 2 + 17 * 11 + 16);
 }
 
+void MonoRack::follow()
+{
+    for (auto& c : controls) refreshControl(*c);
+    strip.refresh();
+}
+
 void MonoRack::refresh()
 {
     for (auto& c : controls) refreshControl(*c);

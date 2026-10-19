@@ -72,6 +72,34 @@ struct Part
 void resizePart(Part&, int length);
 
 
+//
+// AUTOMATION: a control's moves, as ReBirth recorded its tweaks - a value at each of a run of
+// ticks, kept in order. Between two points a knob glides from one to the next; a switch
+// holds each until the next. Before the first and after the last the control holds still.
+// A lane names its control as the rack saves it: see Rack::paramId.
+//
+struct AutoPoint
+{
+    int tick;
+    float value;
+    bool operator==(const AutoPoint& o) const { return tick == o.tick && value == o.value; }
+};
+
+struct AutoLane
+{
+    std::string param;
+    std::vector<AutoPoint> points;
+};
+
+// a lane's value at a tick
+float automationAt(const std::vector<AutoPoint>&, double tick, bool stepped);
+
+//
+// Points recorded over a lane, as a tape over what was there: the lane's points from the
+// first tick recorded to the last go, and these take their place. Made if it isn't there.
+//
+void writeAutomation(std::vector<AutoLane>&, const std::string& param, const std::vector<AutoPoint>&);
+
 struct SongTrack
 {
     std::string name;
@@ -81,6 +109,9 @@ struct SongTrack
     bool shuffle = true;       // whether it swings with the transport's SHUFFLE
     int colour   = 0;          // an index into the Arrange window's colours
     std::vector<Part> parts;   // kept in order of start
+
+    // its machine's knobs and switches, and its mixer channel's; played whether it's muted or not
+    std::vector<AutoLane> automation;
 };
 
 struct Song
@@ -90,6 +121,9 @@ struct Song
     int right  = 4 * ticksPerBar;
     bool cycle = false;        // play round from right back to left
     int cursor = 0;            // where PLAY starts from
+
+    // the effects units' automation, which no one machine's track owns: the Arrange window's FX row
+    std::vector<AutoLane> fx;
 
     // the end of the last part
     int end() const;
@@ -144,15 +178,26 @@ struct SongEvent
     bool shuffle;          // the track swings
 };
 
+// a lane of automation as the audio thread plays it: its control found on the rack
+struct PlayLane
+{
+    int owner;        // a machine, or Rack::FX
+    int index;        // its control there - see Rack::paramCount
+    bool stepped;     // a switch, holding each value
+    std::vector<AutoPoint> points;
+};
+
 struct Playback
 {
     std::vector<SongEvent> events;   // by tick, then machine, then key
+    std::vector<PlayLane> automation;
     int left = 0, right = 0;
     bool cycle = false;
     int cursor = 0;                  // where PLAY starts from
 };
 
-Playback compile(const Song&);
+// the song as the audio thread plays it; given the rack, its automation too
+Playback compile(const Song&, const Rack* = nullptr);
 
 //
 // The song being edited, with as many levels of undo as anyone wants: a song is small, so

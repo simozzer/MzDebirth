@@ -90,6 +90,8 @@ Song oneTrackPerMachine(Song s)
                 if (t.mute && ! allMuted) p.muted = true;
                 out.parts.push_back(std::move(p));
             }
+            for (auto& lane : t.automation)
+                writeAutomation(out.automation, lane.param, lane.points);
         }
         out.mute = found && allMuted;
 
@@ -229,6 +231,44 @@ Part partFromPattern(Rack& rack, int machine, int pattern, int repeats)
     return part;
 }
 
+//============================================================================== automation
+
+float automationAt(const std::vector<AutoPoint>& points, double tick, bool stepped)
+{
+    if (points.empty()) return 0.0f;
+    if (tick <= points.front().tick) return points.front().value;
+    if (tick >= points.back().tick) return points.back().value;
+
+    // the first point after the tick, and the one before it
+    const auto after = std::upper_bound(points.begin(), points.end(), tick,
+                                        [] (double t, const AutoPoint& p) { return t < (double) p.tick; });
+    const auto before = after - 1;
+    if (stepped || after->tick == before->tick) return before->value;
+    const double f = (tick - before->tick) / (double) (after->tick - before->tick);
+    return before->value + (float) f * (after->value - before->value);
+}
+
+void writeAutomation(std::vector<AutoLane>& lanes, const std::string& param, const std::vector<AutoPoint>& recorded)
+{
+    if (recorded.empty()) return;
+
+    auto lane = std::find_if(lanes.begin(), lanes.end(), [&] (const AutoLane& l) { return l.param == param; });
+    if (lane == lanes.end())
+    {
+        lanes.push_back({ param, {} });
+        lane = lanes.end() - 1;
+    }
+
+    int from = recorded.front().tick, to = from;
+    for (const auto& p : recorded) { from = std::min(from, p.tick); to = std::max(to, p.tick); }
+
+    auto& pts = lane->points;
+    pts.erase(std::remove_if(pts.begin(), pts.end(), [from, to] (const AutoPoint& p) { return p.tick >= from && p.tick <= to; }),
+              pts.end());
+    pts.insert(pts.end(), recorded.begin(), recorded.end());
+    std::stable_sort(pts.begin(), pts.end(), [] (const AutoPoint& a, const AutoPoint& b) { return a.tick < b.tick; });
+}
+
 namespace
 {
     // the notes of the first `period` ticks, repeated from the start to `length`
@@ -313,7 +353,7 @@ void clearRange(SongTrack& track, int from, int to)
 
 //============================================================================== compile
 
-Playback compile(const Song& song)
+Playback compile(const Song& song, const Rack* rack)
 {
     Playback out;
     out.left = song.left;
@@ -369,6 +409,23 @@ Playback compile(const Song& song)
         if (machineKind(e.machine) != MachineKind::Mono) continue;
         e.slide = lastEnd[e.machine] > e.tick;
         lastEnd[e.machine] = e.endTick;
+    }
+
+    // the automation, its controls found on the rack; a lane for a control it hasn't is let be
+    if (rack != nullptr)
+    {
+        auto add = [&] (int owner, const std::vector<AutoLane>& lanes)
+        {
+            for (const auto& lane : lanes)
+            {
+                const int i = rack->paramIndex(owner, lane.param);
+                if (i < 0 || lane.points.empty()) continue;
+                out.automation.push_back({ owner, i, rack->paramStepped(owner, i), lane.points });
+            }
+        };
+        for (const auto& t : song.tracks)
+            if (t.machine >= 0 && t.machine < Rack::channels) add(t.machine, t.automation);
+        add(Rack::FX, song.fx);
     }
 
     return out;

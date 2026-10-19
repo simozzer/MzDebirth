@@ -166,6 +166,160 @@ TrackBase& Rack::track(int machine)
     }
 }
 
+//============================================================================== the controls
+
+namespace
+{
+    // the mixer channel's controls, after a machine's own
+    struct MixerParam { const char* id; const char* name; float lo, hi; bool stepped; };
+    constexpr MixerParam mixerParams[] = {
+        { "mixLevel",  "LEVEL",  0.0f, 1.0f, false },
+        { "mixPan",    "PAN",   -1.0f, 1.0f, false },
+        { "mixDelay",  "DELAY",  0.0f, 1.0f, false },
+        { "mixReverb", "REVERB", 0.0f, 1.0f, false },
+        { "mixMute",   "MUTE",   0.0f, 1.0f, true },
+        { "mixDist",   "DIST",   0.0f, 1.0f, true },
+        { "mixPcf",    "PCF",    0.0f, 1.0f, true },
+        { "mixComp",   "COMP",   0.0f, 1.0f, true },
+    };
+    constexpr int mixerCount = (int) (sizeof mixerParams / sizeof mixerParams[0]);
+
+    // an owner's table of knobs, whatever its machine's settings are
+    template <class F>
+    auto withKnobs(Rack& r, int owner, F&& f)
+    {
+        switch (owner)
+        {
+            case Rack::M303: return f(r.mz303.knobs);
+            case Rack::M101: return f(r.mz101.knobs);
+            case Rack::M808: return f(r.mz808.knobs);
+            case Rack::M909: return f(r.mz909.knobs);
+            case Rack::M950: return f(r.mz950.knobs);
+            default:         return f(r.fx);
+        }
+    }
+}
+
+int Rack::knobCount(int owner) const
+{
+    return withKnobs(const_cast<Rack&>(*this), owner, [] (auto& k) { return k.size(); });
+}
+
+int Rack::paramCount(int owner) const
+{
+    if (owner < 0 || owner > FX) return 0;
+    return std::min((int) maxParams, knobCount(owner) + (owner < channels ? mixerCount : 0));
+}
+
+std::string Rack::paramId(int owner, int i) const
+{
+    if (i < 0 || i >= paramCount(owner)) return {};
+    const int knobs = knobCount(owner);
+    if (i < knobs) return withKnobs(const_cast<Rack&>(*this), owner, [i] (auto& k) { return std::string(k.control(i).id); });
+    return mixerParams[i - knobs].id;
+}
+
+std::string Rack::paramName(int owner, int i) const
+{
+    if (i < 0 || i >= paramCount(owner)) return {};
+    const int knobs = knobCount(owner);
+    if (i < knobs) return withKnobs(const_cast<Rack&>(*this), owner, [i] (auto& k) { return std::string(k.control(i).legend); });
+    return mixerParams[i - knobs].name;
+}
+
+int Rack::paramIndex(int owner, const std::string& id) const
+{
+    for (int i = 0; i < paramCount(owner); ++i)
+        if (paramId(owner, i) == id) return i;
+    return -1;
+}
+
+float Rack::paramLo(int owner, int i) const
+{
+    if (i < 0 || i >= paramCount(owner)) return {};
+    const int knobs = knobCount(owner);
+    if (i < knobs) return withKnobs(const_cast<Rack&>(*this), owner, [i] (auto& k) { return k.control(i).lo; });
+    return mixerParams[i - knobs].lo;
+}
+
+float Rack::paramHi(int owner, int i) const
+{
+    if (i < 0 || i >= paramCount(owner)) return {};
+    const int knobs = knobCount(owner);
+    if (i < knobs) return withKnobs(const_cast<Rack&>(*this), owner, [i] (auto& k) { return k.control(i).hi; });
+    return mixerParams[i - knobs].hi;
+}
+
+bool Rack::paramStepped(int owner, int i) const
+{
+    if (i < 0 || i >= paramCount(owner)) return {};
+    const int knobs = knobCount(owner);
+    if (i < knobs) return withKnobs(const_cast<Rack&>(*this), owner, [i] (auto& k) { return k.control(i).sw != nullptr; });
+    return mixerParams[i - knobs].stepped;
+}
+
+float Rack::paramGet(int owner, int i) const
+{
+    if (i < 0 || i >= paramCount(owner)) return {};
+    const int knobs = knobCount(owner);
+    if (i < knobs) return withKnobs(const_cast<Rack&>(*this), owner, [i] (auto& k) { return k.get(i); });
+
+    const Channel& c = channel[owner];
+    switch (i - knobs)
+    {
+        case 0: return c.level.load();
+        case 1: return c.pan.load();
+        case 2: return c.delay.load();
+        case 3: return c.reverb.load();
+        case 4: return c.mute.load() ? 1.0f : 0.0f;
+        case 5: return c.dist.load() ? 1.0f : 0.0f;
+        case 6: return c.pcf.load() ? 1.0f : 0.0f;
+        default: return c.comp.load() ? 1.0f : 0.0f;
+    }
+}
+
+void Rack::paramSet(int owner, int i, float v)
+{
+    if (i < 0 || i >= paramCount(owner)) return;
+    const int knobs = knobCount(owner);
+    if (i < knobs)
+    {
+        withKnobs(*this, owner, [i, v] (auto& k) { k.set(i, v); return 0; });
+        return;
+    }
+
+    Channel& c = channel[owner];
+    const float clamped = std::clamp(v, mixerParams[i - knobs].lo, mixerParams[i - knobs].hi);
+    switch (i - knobs)
+    {
+        case 0: c.level = clamped; break;
+        case 1: c.pan = clamped; break;
+        case 2: c.delay = clamped; break;
+        case 3: c.reverb = clamped; break;
+        case 4: c.mute = v > 0.5f; break;
+        case 5: c.dist = v > 0.5f; break;
+        case 6: c.pcf = v > 0.5f; break;
+        default: c.comp = v > 0.5f; break;
+    }
+}
+
+//
+// The song's automation, where the song is, at the start of a block - each control the song
+// moves set as its lane says, unless a hand is on it.
+//
+void Rack::applyAutomation()
+{
+    if (! clock.isRunning() || playingMode != Mode::Song || playback == nullptr) return;
+
+    const double tick = clock.position() * ticksPerStep;
+    for (const auto& lane : playback->automation)
+    {
+        if (lane.owner < 0 || lane.owner >= owners || lane.index < 0 || lane.index >= maxParams) continue;
+        if (held[lane.owner][lane.index].load(std::memory_order_relaxed)) continue;
+        paramSet(lane.owner, lane.index, automationAt(lane.points, tick, lane.stepped));
+    }
+}
+
 void Rack::prepare(double sampleRate, int maxBlock)
 {
     blockSize = maxBlock > 0 ? maxBlock : 512;
@@ -383,8 +537,8 @@ int Rack::beginBlock(int n)
     // the tempo, bent by DRAG or PUSH while one is held; a change of hand starts afresh
     const int dir = nudge.load();
     if (dir != nudging) { nudging = dir; nudgeHeld = 0; }
-    const double held = std::min(1.0, nudgeHeld / (nudgeRamp * clock.getRate()));
-    const double bend = nudging * (nudgeFrom + (nudgeTo - nudgeFrom) * held);
+    const double heldFor = std::min(1.0, nudgeHeld / (nudgeRamp * clock.getRate()));
+    const double bend = nudging * (nudgeFrom + (nudgeTo - nudgeFrom) * heldFor);
     clock.setTempo(tempo.load() * (1.0 + (nudging != 0 ? bend : 0.0)));
     clockTempo.store((float) clock.getTempo(), std::memory_order_relaxed);
     clock.setShuffle(shuffle.load());
@@ -453,6 +607,7 @@ int Rack::beginBlock(int n)
         }
     }
     modeNow = playingMode;
+    applyAutomation();
 
     if (playingMode == Mode::Song && playback != nullptr && playback->cycle)
     {
@@ -465,6 +620,8 @@ int Rack::beginBlock(int n)
 
 void Rack::endBlock()
 {
+    clockAt = clock.isRunning() ? clock.position() * ticksPerStep : -1.0;
+
     if (! clock.isRunning() || playingMode != Mode::Song)
     {
         songTick = -1;

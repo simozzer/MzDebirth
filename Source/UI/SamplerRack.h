@@ -58,6 +58,7 @@ public:
 
     void tick(bool blinkPhase);
     void refresh();
+    void follow();   // the knobs and switches read back, as the song's automation moves them
 
     // the name, the disk row, the knobs, the fold bar and the roll - or folded, no roll; the
     // bar stays where it is either way

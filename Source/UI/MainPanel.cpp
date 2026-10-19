@@ -381,6 +381,15 @@ void RackView::tick(bool blinkPhase)
     if (flashTicks > 0 && --flashTicks >= 0) repaint();
 }
 
+void RackView::follow()
+{
+    mz303.follow();
+    mz101.follow();
+    mz808.follow();
+    mz909.follow();
+    mz950.follow();
+}
+
 void RackView::refresh()
 {
     mz303.refresh();
@@ -421,6 +430,8 @@ MainPanel::MainPanel(DebirthProcessor& p)
     setLookAndFeel(&look);
     setWantsKeyboardFocus(true);
     PatternPanel::songPlaying = [&p] { return p.rack.playing.load() && p.rack.playingNow() == Mode::Song; };
+    ControlHooks::moved = [&p] (const void* table, int i, float v) { p.controlMoved(table, i, v); };
+    ControlHooks::held = [&p] (const void* table, int i, bool h) { p.controlHeld(table, i, h); };
 
     transport.onNew = [this]
     {
@@ -517,6 +528,8 @@ void MainPanel::showMachine(int machine)
 MainPanel::~MainPanel()
 {
     PatternPanel::songPlaying = nullptr;
+    ControlHooks::moved = nullptr;
+    ControlHooks::held = nullptr;
     setLookAndFeel(nullptr);
 }
 
@@ -540,6 +553,13 @@ void MainPanel::timerCallback()
 
     if (arrangeView.isVisible()) arrangeView.tick();
     else                         rack.tick(blinkPhase);
+
+    // the song playing, its automation turns the knobs: they follow, ten times a second
+    if (playing && processor.rack.playingNow() == Mode::Song && ticks % 3 == 0)
+    {
+        effects.follow();
+        if (! arrangeView.isVisible()) rack.follow();
+    }
 
     const double songAt = processor.rack.songPosition();
     songPosition.setText(arrange::position(songAt >= 0.0       ? songAt

@@ -117,7 +117,9 @@ the 101's both the lead and the risers and pad, which take turns.
 - **The tracks:** one for each machine, so the song and the rack always match. M mutes a
   track, S solos it, SH has it swing with the SHUFFLE knob, and **RACK** shows that machine
   in the rack, ringed for a moment, to turn its knobs. Right-click a track to rename or
-  recolour it. A song saved by 0.5 or before with two tracks for one machine opens with them
+  recolour it, or to clear its automation. **A** beside a track's name means it has
+  automation, drawn as lines over its lane. The **FX** row under the tracks holds the effects
+  units' automation. A song saved by 0.5 or before with two tracks for one machine opens with them
   merged into one, sounding as it did.
 - **The ruler:** click to move the cursor (and the song, while it plays). Drag the **L** and
   **R** flags for the locators, or shift-drag to set both. Double-click to turn the cycle
@@ -191,9 +193,10 @@ that pattern. It works in SONG mode as well, where a stopped machine's notes go 
 ## Recording a song
 
 A song is made as it was in ReBirth, by playing the rack live: its patterns go into the
-Arrange window as you pick them. Each stretch of one pattern on a machine becomes a part
-named after it (A1, B3 and so on), so the song shows what you played and when. A pattern
-picked always comes in on the next bar. Knob tweaks aren't recorded.
+Arrange window as you pick them, and the knobs you turn go in as
+[automation](#automation). Each stretch of one pattern on a machine becomes a part named
+after it (A1, B3 and so on), so the song shows what you played and when. A pattern picked
+always comes in on the next bar.
 
 ### A take
 
@@ -235,6 +238,24 @@ An overdub records those patterns into the song as it plays:
 Only the bars each machine played are recorded over. Machines you didn't touch, and the rest
 of the song, stay as they were. STOP ends an overdub too, and one **Ctrl+Z** takes the whole
 of it back.
+
+### Automation
+
+While a take or an overdub is recording, every knob and switch you move is recorded too, as
+ReBirth recorded its tweaks. That covers each machine's panel, its mixer strip (fader, pan,
+DELAY and REVERB sends, DIST, PCF and COMP switches, and MUTE), and the effects units along
+the top. To record moves alone over a song, start an overdub with **REC** and turn the knobs
+without picking a pattern.
+
+- A knob's moves are recorded from where you take hold of it to where you let go, replacing
+  whatever was recorded for that knob over those ticks.
+- When the song plays, the recorded knobs turn by themselves: knobs glide between the points
+  recorded, and switches jump. Take hold of one and the song leaves it to you until you let go.
+- In the Arrange window, each track draws its automation as lines over its lane, low to high
+  across the control's range, and shows an **A** beside its name when it has any. The effects
+  units' automation is on the **FX** row under the tracks.
+- To clear a track's automation, right-click it and choose **Clear automation**. Right-click
+  **FX** to clear the effects units'. Ctrl+Z brings it back.
 
 ## Effects and the mixer
 
@@ -303,9 +324,9 @@ changes, checks each effect and every factory groove, generates in all 24 keys, 
 each machine, before the app is built round it. It also holds the song to its sample: every
 factory groove made into parts must play bit for bit as its patterns do. The cycle, STOP,
 undo, a song edited while it plays, a part stretched to loop, a pattern played over the
-song, a take and an overdub are each checked. The demo song is played through and held to
-its shape: drops louder than the intro and the breakdown, and a beat of near silence before
-each. It links no JUCE. Without the disks it skips the Mz950's checks and says so;
+song, a take, an overdub and automation played back are each checked. The demo song is
+played through and held to its shape: drops louder than the intro and the breakdown, and a
+beat of near silence before each. It links no JUCE. Without the disks it skips the Mz950's checks and says so;
 `-Release` will not go on without them.
 
 Pushing a version tag (`git push origin v0.3.0`) builds the installer and zip on GitHub -

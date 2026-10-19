@@ -74,6 +74,7 @@ public:
 
     void tick(bool blinkPhase);
     void refresh();
+    void follow();   // the knobs and switches read back, as the song's automation moves them
     int preferredHeight() const;
 
     // the step roll folded away, and told of when its bar is clicked - the height changes

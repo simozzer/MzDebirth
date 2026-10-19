@@ -60,6 +60,7 @@ public:
 
     void tick(bool blinkPhase);
     void refresh();
+    void follow();   // every machine's knobs and switches read back, as automation moves them
     int preferredHeight() const;
 
     // where a machine's unit begins, to scroll to; and a moment's ring round it, to find it by

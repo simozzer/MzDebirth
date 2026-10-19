@@ -117,6 +117,8 @@ Knob::Knob(const juce::String& l, float lo, float hi, float initial,
     slider.setPopupDisplayEnabled(true, true, nullptr);
     slider.textFromValueFunction = [] (double v) { return juce::String(v, 1); };
     slider.onValueChange = [this] { set((float) slider.getValue()); };
+    slider.onDragStart = [this] { if (onHeld) onHeld(true); };
+    slider.onDragEnd = [this] { if (onHeld) onHeld(false); };
     addAndMakeVisible(slider);
 
     setColours(juce::Colour(0xff1d1d1f), colours::light, colours::ink);
@@ -610,10 +612,16 @@ void LevelMeter::paint(juce::Graphics& g)
 
 MixerStrip::MixerStrip(debirth::Channel& c, const juce::String& n)
     : channel(c), name(n),
-      pan("PAN", -1.0f, 1.0f, 0.0f, [&c] { return c.pan.load(); }, [&c] (float v) { c.pan = v; }),
-      delay("DELAY", 0.0f, 1.0f, 0.0f, [&c] { return c.delay.load(); }, [&c] (float v) { c.delay = v; }),
-      reverb("REVERB", 0.0f, 1.0f, 0.0f, [&c] { return c.reverb.load(); }, [&c] (float v) { c.reverb = v; })
+      pan("PAN", -1.0f, 1.0f, 0.0f, [&c] { return c.pan.load(); }, [&c] (float v) { c.pan = v; ControlHooks::move(&c, 1, v); }),
+      delay("DELAY", 0.0f, 1.0f, 0.0f, [&c] { return c.delay.load(); }, [&c] (float v) { c.delay = v; ControlHooks::move(&c, 2, v); }),
+      reverb("REVERB", 0.0f, 1.0f, 0.0f, [&c] { return c.reverb.load(); }, [&c] (float v) { c.reverb = v; ControlHooks::move(&c, 3, v); })
 {
+    // A channel's controls, for automation, in the order the rack lists them after a
+    // machine's own: level, pan, the sends, MUTE, and the inserts.
+    pan.onHeld    = [&c] (bool h) { ControlHooks::hold(&c, 1, h); };
+    delay.onHeld  = [&c] (bool h) { ControlHooks::hold(&c, 2, h); };
+    reverb.onHeld = [&c] (bool h) { ControlHooks::hold(&c, 3, h); };
+
     pan.setColours(juce::Colour(0xff1a1d22), colours::light, colours::light);
     pan.setValueText([] (double v)
     {
@@ -633,16 +641,23 @@ MixerStrip::MixerStrip(debirth::Channel& c, const juce::String& n)
     addAndMakeVisible(reverb);
 
     // the inserts, in the order the sound goes through them
-    struct Insert { Pad& pad; std::atomic<bool>& on; const char* tip; };
-    for (auto& in : { Insert { dist, channel.dist, "Through the DIST unit." },
-                      Insert { pcf,  channel.pcf,  "Through the PCF: the filter the PCF pattern plays." },
-                      Insert { comp, channel.comp, "Through the COMP unit." } })
+    struct Insert { Pad& pad; std::atomic<bool>& on; const char* tip; int param; };
+    for (auto& in : { Insert { dist, channel.dist, "Through the DIST unit.", 5 },
+                      Insert { pcf,  channel.pcf,  "Through the PCF: the filter the PCF pattern plays.", 6 },
+                      Insert { comp, channel.comp, "Through the COMP unit.", 7 } })
     {
         auto* on = &in.on;
         auto* pad = &in.pad;
+        auto* ch = &channel;
+        const int param = in.param;
         pad->setTooltip(in.tip);
         pad->setLedColour(colours::ledGreen);
-        pad->onPress = [on, pad] { *on = ! on->load(); pad->setLit(on->load()); };
+        pad->onPress = [on, pad, ch, param]
+        {
+            *on = ! on->load();
+            pad->setLit(on->load());
+            ControlHooks::move(ch, param, on->load() ? 1.0f : 0.0f);
+        };
         addAndMakeVisible(*pad);
     }
 
@@ -658,14 +673,21 @@ MixerStrip::MixerStrip(debirth::Channel& c, const juce::String& n)
     };
     fader.setColour(juce::Slider::rotarySliderOutlineColourId, colours::light.withAlpha(0.5f));
     fader.setColour(juce::Slider::thumbColourId, colours::light);
-    fader.onValueChange = [this] { channel.level = (float) fader.getValue(); };
+    fader.onValueChange = [this] { channel.level = (float) fader.getValue(); ControlHooks::move(&channel, 0, channel.level.load()); };
+    fader.onDragStart = [this] { ControlHooks::hold(&channel, 0, true); };
+    fader.onDragEnd = [this] { ControlHooks::hold(&channel, 0, false); };
     addAndMakeVisible(fader);
     meter.setTooltip("What this channel puts into the output, left and right - after its fader, pan and "
                      "the MASTER. Red: this machine alone would take the output over full scale.");
     addAndMakeVisible(meter);
 
     mute.setLedColour(colours::stepYellow);
-    mute.onPress = [this] { channel.mute = ! channel.mute.load(); mute.setLit(channel.mute.load()); };
+    mute.onPress = [this]
+    {
+        channel.mute = ! channel.mute.load();
+        mute.setLit(channel.mute.load());
+        ControlHooks::move(&channel, 4, channel.mute.load() ? 1.0f : 0.0f);
+    };
     addAndMakeVisible(mute);
 
     refresh();

@@ -52,6 +52,7 @@ public:
 
     void tick(bool blinkPhase);
     void refresh();
+    void follow();   // the knobs and switches read back, as the song's automation moves them
     int preferredHeight() const;
 
     void paint(juce::Graphics&) override;

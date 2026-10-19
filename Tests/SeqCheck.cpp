@@ -1064,6 +1064,65 @@ void livePatterns()
     check(! ch.live.load() && ! ch.liveWanted.load(), "and STOP lets the pattern go, so PLAY plays the song");
 }
 
+// AUTOMATION: a lane's values between its points, a recording over a lane, the rack's controls
+// by id, and the song playing a lane - but not on a control a hand is holding.
+void automation()
+{
+    std::printf("\nautomation\n");
+
+    const std::vector<AutoPoint> ramp = { { 100, 0.0f }, { 300, 1.0f }, { 500, 0.5f } };
+    check(automationAt(ramp, 0, false) == 0.0f && automationAt(ramp, 900, false) == 0.5f,
+          "before its first point and after its last a lane holds still");
+    check(std::abs(automationAt(ramp, 200, false) - 0.5f) < 1.0e-6f && std::abs(automationAt(ramp, 400, false) - 0.75f) < 1.0e-6f,
+          "a knob glides from point to point", fmt("%.3f, %.3f", automationAt(ramp, 200, false), automationAt(ramp, 400, false)));
+    check(automationAt(ramp, 299, true) == 0.0f && automationAt(ramp, 300, true) == 1.0f, "a switch holds each value until the next");
+
+    std::vector<AutoLane> lanes;
+    writeAutomation(lanes, "cutoff", ramp);
+    writeAutomation(lanes, "cutoff", { { 250, 0.2f }, { 350, 0.3f } });
+    const auto& pts = lanes[0].points;
+    check(lanes.size() == 1 && pts.size() == 4 && pts[0].tick == 100 && pts[1].tick == 250 && pts[2].tick == 350 && pts[3].tick == 500,
+          "recorded over, a lane loses its points between the first and last recorded", fmt("%zu points", pts.size()));
+
+    Rack r;
+    r.prepare(48000, 500);
+    r.tempo = 120;
+    const int level = r.paramIndex(Rack::M808, "mixLevel");
+    const int decay = r.paramIndex(Rack::FX, "reverbDecay");
+    const std::string first = r.paramId(Rack::M303, 0);
+    check(level == r.knobCount(Rack::M808) && decay >= 0 && r.paramIndex(Rack::M303, first) == 0
+          && r.paramIndex(Rack::FX, "mixLevel") < 0 && r.paramStepped(Rack::M808, r.paramIndex(Rack::M808, "mixMute")),
+          "every control is found by its id: a machine's, its channel's after them, and the effects units'",
+          fmt("level %d of %d, decay %d", level, r.paramCount(Rack::M808), decay));
+    r.paramSet(Rack::M808, level, 0.25f);
+    check(r.channel[Rack::M808].level.load() == 0.25f && r.paramGet(Rack::M808, level) == 0.25f, "and set, and read back");
+
+    // the song: the 808's fader up over the first bar, the REVERB's decay stepping to 0.9 at the second
+    Song s = defaultSong();
+    s.tracks[Rack::M808].automation.push_back({ "mixLevel", { { 0, 0.0f }, { ticksPerBar, 1.0f } } });
+    s.fx.push_back({ "reverbDecay", { { 0, 0.1f }, { ticksPerBar, 0.9f } } });
+    r.mode = Mode::Song;
+    r.publish(std::make_unique<Playback>(compile(s, &r)));
+    r.playing = true;
+    play(r, 96, 500, [] (int, auto&, auto&) {});   // half a bar: 96 blocks of the 192
+    const float half = r.channel[Rack::M808].level.load();
+    check(std::abs(half - 0.5f) < 0.02f, "played, the fader is half way up half way through the bar", fmt("%.3f", half));
+
+    r.held[Rack::M808][level] = true;              // a hand on the fader
+    r.channel[Rack::M808].level = 0.8f;
+    play(r, 48, 500, [] (int, auto&, auto&) {});
+    check(r.channel[Rack::M808].level.load() == 0.8f, "held, the song leaves it where the hand has it");
+    r.held[Rack::M808][level] = false;
+    play(r, 1, 500, [] (int, auto&, auto&) {});
+    check(r.channel[Rack::M808].level.load() > 0.74f && r.channel[Rack::M808].level.load() < 0.8f,
+          "let go, the song has it again", fmt("%.3f", r.channel[Rack::M808].level.load()));
+
+    const int decayBefore = (int) std::round(r.fx.get(decay) * 10.0f);
+    play(r, 60, 500, [] (int, auto&, auto&) {});   // into the second bar
+    check(std::abs(r.fx.get(decay) - 0.9f) < 1.0e-4f && decayBefore >= 1, "the effects units' knobs are played too",
+          fmt("%.2f", r.fx.get(decay)));
+}
+
 // An OVERDUB: the song playing, a pattern picked is recorded over its machine's track for the
 // bars it plays, and the rest of the track - and every other - is left as it was.
 void overdub()
@@ -1486,6 +1545,7 @@ int main()
     looping();
     livePatterns();
     overdub();
+    automation();
     tracksAreMachines();
     keys();
     grooves();
