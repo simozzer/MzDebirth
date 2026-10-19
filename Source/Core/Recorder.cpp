@@ -8,9 +8,10 @@
 namespace debirth
 {
 
-void Recorder::begin(int start, const bool arm[Rack::channels])
+void Recorder::begin(int start, const bool arm[Rack::channels], bool over)
 {
     startTick = start;
+    overdub = over;
     for (int m = 0; m < Rack::channels; ++m)
     {
         armed[m] = arm[m];
@@ -57,13 +58,18 @@ void Recorder::apply(Rack& rack, Song& song) const
 
     for (int m = 0; m < Rack::channels; ++m)
     {
-        if (! armed[m]) continue;
+        if (! armed[m] || (overdub && runs[m].empty())) continue;
 
         auto t = std::find_if(song.tracks.begin(), song.tracks.end(), [m] (const SongTrack& s) { return s.machine == m; });
         if (t == song.tracks.end()) continue;
 
-        clearRange(*t, startTick, end());
-        t->shuffle = rack.track(m).shuffle.load();
+        // A take is over the whole track, for its bars; an overdub only where the machine
+        // played, and the track's SHUFFLE is the song's - the rest of it swings as it did.
+        if (! overdub)
+        {
+            clearRange(*t, startTick, end());
+            t->shuffle = rack.track(m).shuffle.load();
+        }
 
         const auto& list = runs[m];
         for (size_t i = 0; i < list.size(); ++i)
@@ -84,6 +90,7 @@ void Recorder::apply(Rack& rack, Song& song) const
                     n.length = std::max(1, std::min(n.length, part.length - n.tick));
 
             part.sortNotes();
+            if (overdub) clearRange(*t, part.start, part.end());   // round a cycle, the later pass wins
             t->parts.push_back(std::move(part));
         }
 

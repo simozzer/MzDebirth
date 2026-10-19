@@ -37,16 +37,14 @@ TransportBar::TransportBar(DebirthProcessor& p)
     //
     // REC, as in ReBirth: on, it blinks, and PLAY records - every machine's
     // patterns, into its track of the song, from the bar the song cursor is on (or the next)
-    // until STOP. Pressed again during the take, it ends the take there and plays on.
+    // until STOP. Pressed again during the take, it ends the take there and plays on. Pressed
+    // with the song playing, it overdubs - see DebirthProcessor::rec.
     //
     rec.setLedColour(colours::ledRed);
-    rec.setTooltip("REC: on, PLAY records the rack into the song - the patterns each machine plays, "
-                   "from the song cursor's bar until STOP. It records over what was there; undo takes it back.");
-    rec.onPress = [this]
-    {
-        if (processor.taking()) processor.endTake();
-        else processor.recordReady = ! processor.recordReady;
-    };
+    rec.setTooltip("REC: on, PLAY records the rack into the song from the cursor's bar until STOP. "
+                   "With the song playing it overdubs: patterns picked are recorded over their tracks "
+                   "until REC is pressed again. Undo takes either back.");
+    rec.onPress = [this] { processor.rec(); };
     for (auto* b : { &play, &stop, &rec })
         addAndMakeVisible(*b);
 
@@ -115,7 +113,8 @@ void TransportBar::tick()
     play.setLit(playing);
     keyPanel.tick();
     stop.setLit(! playing);
-    rec.setLit(recording || (processor.recordReady && (juce::Time::getMillisecondCounter() / 250) % 2 == 0));
+    const bool blink = (juce::Time::getMillisecondCounter() / 250) % 2 == 0;
+    rec.setLit(recording ? (! processor.overdubEnding || blink) : (processor.recordReady && blink));
     tempo.repaint();
 
     // and an arrow key let go where it was not seen does not leave the rack bent
@@ -543,9 +542,9 @@ void MainPanel::timerCallback()
     else                         rack.tick(blinkPhase);
 
     const double songAt = processor.rack.songPosition();
-    songPosition.setText(arrange::position(processor.taking() ? (double) processor.takeReached()
-                                           : songAt >= 0.0     ? songAt
-                                                               : (double) processor.song.song().cursor));
+    songPosition.setText(arrange::position(songAt >= 0.0       ? songAt
+                                           : processor.taking() ? (double) processor.takeReached()
+                                                                : (double) processor.song.song().cursor));
 }
 
 void MainPanel::refresh()

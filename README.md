@@ -205,6 +205,18 @@ bars it ran, including the bar it stopped in. One **Ctrl+Z** takes the whole tak
 Recorded from SONG mode, the rack goes back to SONG mode when the take is over, so PLAY plays
 the song with the take in it. Knob tweaks aren't recorded.
 
+**Overdubbing** records over a song while it plays:
+
+1. With the song playing, press **REC**. It lights, and the song plays on as before.
+2. Pick a pattern on any machine. It takes that machine over at the next bar, and from that
+   bar it's recorded into the machine's track. Change patterns, or pick them on other
+   machines, as you go.
+3. Press **REC** again. Every machine goes back to the song at the next bar (REC blinks
+   until then), and the overdub ends there.
+
+Only the bars each machine played are recorded over. Machines you didn't touch, and the rest
+of the song, stay as they were. One **Ctrl+Z** takes the whole overdub back.
+
 ![The Mz808 and the Mz909, each with its pattern section and mixer strip: pan, the DELAY and REVERB sends, the inserts, the fader and its meter](docs/img/drum-machines.png)
 
 ## Effects and the mixer

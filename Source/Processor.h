@@ -68,9 +68,18 @@ public:
     // and what every one plays goes into the song from the cursor's bar, there to be seen
     // as it is played. STOP, or REC again, ends it; one undo takes the whole take back.
     //
+    //
+    // With the song playing, REC OVERDUBS instead: each pattern picked in the rack takes its
+    // machine over at the next bar, as it would anyway, and is recorded into its track from
+    // there; REC again hands every machine back to the song at the next bar, and the song
+    // carries on as it was from there.
+    //
     bool recordReady = false;
     void play();
+    void rec();
     void endTake();
+    bool overdubbing() const;
+    bool overdubEnding = false;   // REC pressed again: waiting for the bar
     bool taking() const { return rack.recording.load(); }
     int takeReached() const { return take.reached(); }   // where in the song a take has got to
 

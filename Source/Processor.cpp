@@ -111,6 +111,14 @@ void DebirthProcessor::timerCallback()
     {
         if (rack.playing.load()) drainTake();
         else                     endTake();   // stopped, from wherever
+
+        // an overdub handed back: over once every machine is the song's again, on the bar
+        if (taking() && overdubEnding)
+        {
+            bool anyLive = false;
+            for (const auto& ch : rack.channel) anyLive |= ch.live.load() || ch.liveWanted.load();
+            if (! anyLive) endTake();
+        }
     }
 
     // a take over and the rack stopped: back to the mode it was in
@@ -193,6 +201,51 @@ void DebirthProcessor::endTake()
     rack.recording = false;
     drainTake();
     recordReady = false;
+    overdubEnding = false;
+}
+
+bool DebirthProcessor::overdubbing() const
+{
+    return taking() && take.overdubbing();
+}
+
+//
+// REC, from the transport. Stopped, it readies a take for the next PLAY; the song playing, it
+// starts an OVERDUB at once. Pressed during a take, it ends it there; during an overdub, it
+// hands every machine back to the song at the next bar, where the overdub ends.
+//
+void DebirthProcessor::rec()
+{
+    using namespace debirth;
+
+    if (overdubbing())
+    {
+        for (auto& ch : rack.channel) ch.liveWanted = false;
+        overdubEnding = true;
+        return;
+    }
+    if (taking())
+    {
+        endTake();
+        return;
+    }
+    if (! rack.playing.load() || rack.playingNow() != Mode::Song)
+    {
+        recordReady = ! recordReady;
+        return;
+    }
+
+    // the overdub: every machine, at the song's own steps, but only where a pattern is picked
+    bool all[Rack::channels];
+    for (auto& a : all) a = true;
+    Rack::Played stale;
+    while (rack.takePlayed(stale)) {}
+    take.begin(0, all, true);
+    beforeTake = song.song();
+    takeShown = false;
+    overdubEnding = false;
+    recordReady = false;
+    rack.recording = true;
 }
 
 void DebirthProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)

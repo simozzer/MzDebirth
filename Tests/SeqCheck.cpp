@@ -1064,6 +1064,59 @@ void livePatterns()
     check(! ch.live.load() && ! ch.liveWanted.load(), "and STOP lets the pattern go, so PLAY plays the song");
 }
 
+// An OVERDUB: the song playing, a pattern picked is recorded over its machine's track for the
+// bars it plays, and the rest of the track - and every other - is left as it was.
+void overdub()
+{
+    std::printf("\nan overdub\n");
+
+    constexpr int n = 500, perBar = 192;   // 120 bpm at 48 kHz
+    Rack r;
+    r.prepare(48000, n);
+    r.tempo = 120;
+    r.mode = Mode::Song;
+    for (int s = 0; s < 16; s += 4) r.mz808.track.patterns[2].set(tr808::Voice::BD, s, true);   // A3: four a bar
+    r.mz808.track.selected = 2;
+    Song s = defaultSong();
+    std::vector<Note> ones;
+    for (int b = 0; b < 4; ++b) ones.push_back(note(b * ticksPerBar, 24, bd808));
+    s.tracks[Rack::M808].parts.push_back(part(0, 4 * ticksPerBar, ones));
+    s.tracks[Rack::M909].parts.push_back(part(0, 4 * ticksPerBar, ones));
+    publish(r, s);
+
+    Recorder take;
+    bool all[Rack::channels];
+    for (auto& a : all) a = true;
+    auto drain = [&] (int, auto&, auto&) { Rack::Played p; while (r.takePlayed(p)) take.add(r, p); };
+
+    r.playing = true;
+    play(r, 50, n, drain);
+    take.begin(0, all, true);                                   // REC
+    r.recording = true;
+    play(r, 50, n, drain);
+    r.channel[Rack::M808].liveWanted = true;                    // A3 picked in the first bar
+    play(r, perBar - 100 + perBar + 100, n, drain);
+    r.channel[Rack::M808].liveWanted = false;                   // REC again, in the third
+    play(r, perBar - 100 + perBar, n, drain);
+    r.recording = false;
+    play(r, 1, n, drain);
+
+    take.apply(r, s);
+    const auto& t = s.tracks[Rack::M808].parts;
+    check(t.size() == 3, "the 808's track: the song, the overdub, the song", fmt("%zu parts", t.size()));
+    if (t.size() == 3)
+    {
+        check(t[0].start == 0 && t[0].length == ticksPerBar && t[0].notes.size() == 1,
+              "the song up to the bar the pattern took over", fmt("%d long", t[0].length));
+        check(t[1].name == "A3" && t[1].start == ticksPerBar && t[1].length == 2 * ticksPerBar && t[1].notes.size() == 8,
+              "A3 for the two bars it played", fmt("%s at %d, %d long, %zu notes", t[1].name.c_str(), t[1].start, t[1].length, t[1].notes.size()));
+        check(t[2].start == 3 * ticksPerBar && t[2].length == ticksPerBar && t[2].notes.size() == 1,
+              "then the song again, from the bar it was handed back", fmt("at %d", t[2].start));
+    }
+    check(s.tracks[Rack::M909].parts.size() == 1 && s.tracks[Rack::M909].parts[0].length == 4 * ticksPerBar,
+          "a machine left to the song is left alone");
+}
+
 // A part dragged longer loops, as a clip in Ableton Live; shorter and longer again, its loop
 // is still there; edited, it loops as it then stands.
 void looping()
@@ -1432,6 +1485,7 @@ int main()
     recording();
     looping();
     livePatterns();
+    overdub();
     tracksAreMachines();
     keys();
     grooves();

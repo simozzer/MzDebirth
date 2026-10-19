@@ -600,6 +600,11 @@ void Rack::renderBlock(float* left, float* right, int n)
             if (plays(M909) && isStep) mz909.step();
             if (plays(M950)) { if (isStep) mz950.step(); else mz950.gateOff(); }
 
+            // an overdub: what those machines play, at the song's own steps
+            if (isStep && recording.load())
+                for (int m = 0; m < channels; ++m)
+                    if (plays(m)) logPlayed(step, m);
+
             strike(at, l, e, step);
         });
 

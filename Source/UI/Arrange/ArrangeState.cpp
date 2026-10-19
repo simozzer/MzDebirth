@@ -66,7 +66,7 @@ int State::snappedDown(double tick) const
 
 double State::now() const
 {
-    if (processor.taking()) return processor.takeReached();   // a take, recording into the song
+    if (processor.taking() && ! processor.overdubbing()) return processor.takeReached();   // a take, recording
     const double playing = processor.rack.songPosition();
     return playing >= 0.0 ? playing : (double) song().cursor;
 }

@@ -25,8 +25,13 @@ namespace debirth
 class Recorder
 {
 public:
-    // a take from this tick of the song - a bar - for the machines armed
-    void begin(int startTick, const bool armed[Rack::channels]);
+    //
+    // A take from this tick of the song - a bar - for the machines armed. An OVERDUB is
+    // recorded over the song as it plays: its steps are the song's own, so it starts at 0,
+    // and it records over only the bars each machine played, leaving the rest of its track.
+    //
+    void begin(int startTick, const bool armed[Rack::channels], bool overdub = false);
+    bool overdubbing() const { return overdub; }
 
     // a step the rack logged; the notes are read from its pattern now
     void add(Rack&, const Rack::Played&);
@@ -56,6 +61,7 @@ private:
     };
 
     int startTick = 0;
+    bool overdub = false;
     bool armed[Rack::channels] {};
     std::vector<Run> runs[Rack::channels];
     int64_t lastStep = -1;
