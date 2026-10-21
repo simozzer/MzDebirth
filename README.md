@@ -7,6 +7,10 @@ rack, an [Arrange window](#the-arrange-window) after Cubase on the Atari ST, to 
 patterns out as a song and write parts of any length - or [record](#recording-a-song) the
 rack into it as you play, as ReBirth did.
 
+**[Tutorial](docs/tutorial.md)** - your first half hour, step by step &nbsp;·&nbsp;
+**[Troubleshooting](#troubleshooting)** - when a button seems to do nothing &nbsp;·&nbsp;
+**[Download](https://github.com/simozzer/MzDebirth/releases/latest)**
+
 ![The rack: the transport and KEY section; the DIST, PCF, DELAY, REVERB and COMP units; the RACK and ARRANGE tabs, the link to the project page, the OUT meter and LIMIT, and the song position; the Mz303 and the Mz101, each with its pattern section and mixer strip](docs/img/rack.png)
 
 It plays the synths' real engines - [Mz303](https://github.com/simozzer/Mz303),
@@ -76,6 +80,10 @@ Ubuntu machines, where it passes the same checks as the Windows version, and run
 24.04 under WSL, but not yet tried much on real Linux desktops.
 
 ## Getting started
+
+**New to it? Start with the [tutorial](docs/tutorial.md)** - half an hour from the demo song
+to a song of your own. If a button seems to do nothing, see
+[Troubleshooting](#troubleshooting): usually it's SONG MODE.
 
 - **Options** (top left) picks the audio output.
 - **The window**: drag it wider and everything grows with it; drag it taller (from 800
@@ -350,6 +358,40 @@ shows the keys that mix with it, and the key of the bank the Mz303 is showing.
 - **TRANSPOSE** moves that bank's bass lines and leads into the key, degree for degree - so
   C minor sent to 8B becomes C major, not just a different pitch. A bank written by hand has
   its key worked out from its notes. The drums are left as they are.
+
+## Troubleshooting
+
+**I pick a pattern or a bank and nothing changes.** SONG MODE is on - it is when a new
+rack opens, on the demo song - so the song is playing the machines, not their pads. Click
+**SONG MODE** so its light goes off, and PLAY plays the patterns you pick. (With the song
+playing, a pattern you pick does take its machine over, from the next bar; click the lit
+pattern again to give the machine back to the song.)
+
+**I turn a knob and it springs back.** The song has automation for that knob - the demo
+song turns the 303's CUT OFF, the 101's FREQ and REVERB, and the 909's snare LEVEL. While
+you hold a knob it's yours; let go and the song has it again. Turn SONG MODE off, or clear
+the track's automation (right-click it in the Arrange window, **Clear automation**).
+
+**PLAY plays the demo song, not my patterns** - the same thing: SONG MODE is on.
+
+**A machine is silent.** Check its **STOP** (lit means stopped - pick a pattern to bring it
+back), its **MUTE**, its fader, and in the Arrange window the track's **M** and **S**. A
+pattern can also simply be empty: the Mz808's and Mz909's steps show for one instrument at a
+time, picked on the select row.
+
+**No sound at all.** **Options**, top left, picks the output device. On Linux under WSL,
+see the [Linux section](#linux-beta) - WSL needs ALSA's PulseAudio plugin.
+
+**It crackles.** Raise the buffer size in **Options**. If the **LIMIT** light is orange much
+of the time, the mix is running into the limiter: turn the MASTER or a fader down.
+
+**The step grid is missing.** That machine is folded: click its **STEP SEQUENCER** bar.
+
+**I lost my work.** **Ctrl+Z** in the Arrange window undoes edits to the song, takes and
+overdubs included. The app remembers where it was left, but **SAVE** is the only way to keep
+a rack for good.
+
+Something else? Please [open an issue](https://github.com/simozzer/MzDebirth/issues).
 
 ## Building
 
