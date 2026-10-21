@@ -1,5 +1,6 @@
 #
-# MzDebirth for Linux: a 64-bit x86 build for Ubuntu 22.04 and later, and other distributions
+# MzDebirth for Linux: 64-bit x86 and arm64 (the Raspberry Pi 5) builds for Ubuntu 22.04 and
+# later, Raspberry Pi OS Bookworm, and other distributions
 # as new, as a beta - the app, the Mz950's disks beside it in disks/, and a read-me, in a
 # .tar.gz to unpack anywhere and run.
 #
@@ -46,7 +47,15 @@ env:
 
 jobs:
   linux:
-    runs-on: ubuntu-22.04
+    # x86_64 for PCs, and arm64 for the Raspberry Pi 5 (64-bit Raspberry Pi OS) and other ARM
+    # boards - each built natively, on a runner of its own kind.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-22.04,     arch: x86_64, deb: amd64, sums: SHA256SUMS-linux.txt }
+          - { runner: ubuntu-22.04-arm, arch: arm64,  deb: arm64, sums: SHA256SUMS-linux-arm64.txt }
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -103,7 +112,7 @@ jobs:
       - name: Package, as a beta
         run: |
           ver=$(sed -n "s/^project(MzDebirth VERSION \([0-9.]*\).*/\1/p" CMakeLists.txt)
-          pkg="MzDebirth-$ver-linux-x86_64-beta"
+          pkg="MzDebirth-$ver-linux-${{ matrix.arch }}-beta"
           out="dist/$pkg"
           mkdir -p "$out/disks"
 
@@ -132,7 +141,7 @@ jobs:
       #
       - name: Package as a .deb
         run: |
-          deb="mzdebirth_${VER}_amd64"
+          deb="mzdebirth_${VER}_${{ matrix.deb }}"
           root="dist/$deb"
           mkdir -p "$root/DEBIAN" "$root/opt/MzDebirth" "$root/usr/bin" "$root/usr/share/applications" \
                    "$root/usr/share/icons/hicolor/256x256/apps" "$root/usr/share/doc/mzdebirth"
@@ -151,7 +160,7 @@ jobs:
           cat > "$root/DEBIAN/control" <<EOF
           Package: mzdebirth
           Version: $VER
-          Architecture: amd64
+          Architecture: ${{ matrix.deb }}
           Maintainer: Simon Moscrop <simozzer@users.noreply.github.com>
           Installed-Size: $size
           Depends: libc6 (>= 2.35), libstdc++6 (>= 11), libasound2 | libasound2t64, libfreetype6, libfontconfig1, libx11-6, libxext6, libxi6, libxinerama1, libxrandr2, libxcursor1, libxrender1
@@ -171,7 +180,7 @@ jobs:
           dpkg-deb --contents "dist/$deb.deb"
           echo "DEB=$deb" >> "$GITHUB_ENV"
 
-          (cd dist && sha256sum "$PKG.tar.gz" "$deb.deb" | tee "SHA256SUMS-linux.txt")
+          (cd dist && sha256sum "$PKG.tar.gz" "$deb.deb" | tee "${{ matrix.sums }}")
 
       - name: Keep the build
         uses: actions/upload-artifact@v4
@@ -180,7 +189,7 @@ jobs:
           path: |
             dist/*.tar.gz
             dist/*.deb
-            dist/SHA256SUMS-linux.txt
+            dist/${{ matrix.sums }}
           retention-days: 14
           if-no-files-found: error
 
@@ -198,7 +207,7 @@ jobs:
                  --jq "[.[] | select(.tag_name == \"$TAG\")] | sort_by(.draft) | .[0].id // empty")
           if [ -z "$id" ]; then echo "::error::no release for $TAG to attach the Linux archive to"; exit 1; fi
 
-          for f in "dist/$PKG.tar.gz" "dist/$DEB.deb" dist/SHA256SUMS-linux.txt; do
+          for f in "dist/$PKG.tar.gz" "dist/$DEB.deb" "dist/${{ matrix.sums }}"; do
             name=$(basename "$f")
             for old in $(gh api "repos/$GITHUB_REPOSITORY/releases/$id/assets" --jq ".[] | select(.name == \"$name\") | .id"); do
               gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$old"
