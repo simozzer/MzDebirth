@@ -281,8 +281,11 @@ void SamplerRack::chooseDisk()
             if (! sampler.loadDisk(file.getFullPathName().toStdString(), error))
                 message = "NOT A DISK: " + juce::String(error);
             else
+            {
+                sampler.resetPerformance();
                 message = error.empty() ? juce::String() : juce::String(error).toUpperCase();
-            showDisk();
+            }
+            refresh();
         });
 }
 

@@ -47,6 +47,13 @@ bool Mz950::loadDisk(const std::string& p, std::string& error)
     return true;   // loaded, but silent
 }
 
+void Mz950::resetPerformance()
+{
+    const int gain = knobs.indexOf("gain");
+    for (int i = 0; i < knobs.size(); ++i)
+        if (i != gain) knobs.set(i, knobs.defaultOf(i));
+}
+
 std::string Mz950::diskName() const
 {
     return disk != nullptr ? disk->getName() : std::string();

@@ -63,6 +63,11 @@ public:
     // ---------------------------------------------------------------- message thread
 
     bool loadDisk(const std::string& path, std::string& error);
+
+    // every knob but GAIN back to where it starts: a new disk is a new instrument, and an
+    // offset dialled in for the last one only makes this one sound wrong
+    void resetPerformance();
+
     const std::string& diskPath() const { return path; }
     std::string diskName() const;
 
