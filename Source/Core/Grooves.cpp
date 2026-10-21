@@ -426,7 +426,7 @@ std::vector<std::string> writeGrooves(Rack& rack)
     rack.channel[Rack::M101].level = 0.73f;
     rack.channel[Rack::M101].pan = 0.3f;
     rack.channel[Rack::M808].level = 0.93f;
-    rack.channel[Rack::M909].level = 0.73f;
+    rack.channel[Rack::M909].level = 0.93f;   // as loud as the 808: in banks B and D it plays the kick
     rack.channel[Rack::M909].pan = -0.25f;
     rack.channel[Rack::M950].level = 0.93f;
     rack.master = 1.0f;

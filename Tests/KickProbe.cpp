@@ -225,8 +225,67 @@ namespace
     }
 }
 
+namespace
+{
+    // each bank's first groove: every machine's level, crest and low end, and the 909's voices
+    void everyBank()
+    {
+        const char* names[] = { "303", "101", "808", "909", "950" };
+        for (int bank = 0; bank < 4; ++bank)
+        {
+            auto run = [&] (int solo, const char* only909)
+            {
+                Rack r;
+                r.prepare(rate, 512);
+                writeGrooves(r);
+                for (int m = 0; m < Rack::channels; ++m)
+                {
+                    r.channel[m].mute = solo >= 0 && m != solo;
+                    r.track(m).selected = bank * 8;
+                    r.track(m).current = bank * 8;
+                }
+                if (only909 != nullptr)
+                    for (int i = 0; i < r.mz909.knobs.size(); ++i)
+                    {
+                        const std::string id = r.mz909.knobs.control(i).id;
+                        const bool level = id.find("Level") != std::string::npos;
+                        if (level && id != only909) r.mz909.knobs.set(i, 0);
+                    }
+                r.playing = true;
+                std::vector<float> out, l(512), rr(512);
+                while (out.size() < (size_t) (rate * 8))
+                {
+                    r.render(l.data(), rr.data(), 512);
+                    for (int i = 0; i < 512; ++i) out.push_back(0.5f * (l[(size_t) i] + rr[(size_t) i]));
+                }
+                return out;
+            };
+            auto peakOf = [] (const std::vector<float>& x) { double p = 0; for (float v : x) p = std::max(p, (double) std::fabs(v)); return p; };
+
+            const auto mix = run(-1, nullptr);
+            const double low = rmsAll(lowpass(mix, 120));
+            std::printf("\n  bank %c: mix %6.1f dB rms, peak %5.1f\n", 'A' + bank, db(rmsAll(mix)), db(peakOf(mix)));
+            for (int m = 0; m < Rack::channels; ++m)
+            {
+                const auto x = run(m, nullptr);
+                if (rmsAll(x) < 1e-6) continue;
+                std::printf("    %s  %6.1f dB rms (%5.1f under the mix)  crest %4.1f  low end %3.0f%%\n", names[m], db(rmsAll(x)),
+                            db(rmsAll(mix)) - db(rmsAll(x)), db(peakOf(x)) - db(rmsAll(x)),
+                            100 * std::pow(rmsAll(lowpass(x, 120)) / low, 2));
+            }
+            for (const char* v : { "bdLevel", "sdLevel", "cpLevel", "hhLevel", "rsLevel", "crLevel", "rdLevel", "ltLevel" })
+            {
+                const auto x = run(Rack::M909, v);
+                if (rmsAll(x) > 1e-5)
+                    std::printf("      909 %-8s %6.1f dB rms, peak %5.1f\n", v, db(rmsAll(x)), db(peakOf(x)));
+            }
+        }
+    }
+}
+
 int main(int argc, char** argv)
 {
+    if (argc > 1 && std::string(argv[1]) == "--banks") { everyBank(); return 0; }
     if (argc > 1)
     {
         const std::string folder = argv[1];
