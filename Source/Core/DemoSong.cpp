@@ -255,7 +255,9 @@ Song demoSong(Rack& rack)
         std::vector<Note> kicks;
         for (int i = 0; i < 4; ++i) kicks.push_back(note(i * beat, step / 2, drum808(tr808::Voice::BD), 127));
         for (int i = 0; i < 8; ++i) kicks.push_back(note(bar * 2 + i * beat / 2, step / 2, drum808(tr808::Voice::BD), 127));
-        for (int i = 0; i < 12; ++i) kicks.push_back(note(bar * 3 + i * step, step / 2, drum808(tr808::Voice::BD), 127));
+        // the last bar's sixteenths stop a beat short of the gap, so the kicks' tails - long,
+        // through the 808's DIST - have died away before the beat of silence
+        for (int i = 0; i < 8; ++i) kicks.push_back(note(bar * 3 + i * step, step / 2, drum808(tr808::Voice::BD), 127));
         w.part(Beat, "KICK ROLL", 44, 4 * bar - beat, kicks);
     }
 

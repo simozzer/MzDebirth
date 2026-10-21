@@ -412,15 +412,30 @@ std::vector<std::string> writeGrooves(Rack& rack)
     knob(rack.mz101.knobs, "portaTime", 2.5f);
     knob(rack.mz101.knobs, "release", 3.5f);
 
-    rack.channel[Rack::M101].level = 0.55f;
+    //
+    // The mix, set to be heard at the level a record is. An 808 kick starts with one big
+    // half-cycle and its body - the weight you hear - sits some 20 dB under it, so left alone
+    // that one spike sets how loud everything else can go, and the whole mix plays a dozen dB
+    // quieter than a record: quiet enough that the ear, which loses the bass first, hears the
+    // kick as thin. So the 808 goes through the DIST as well as the COMP, soft, which shaves
+    // the spike and adds the harmonics that let a kick through small speakers too; and with
+    // that headroom back, the faders and the MASTER come up, LIMIT catching what's left.
+    // About 10 dB louder than before, with a crest of 12 dB - Tests/KickProbe.cpp measures it.
+    //
+    rack.channel[Rack::M303].level = 0.93f;
+    rack.channel[Rack::M101].level = 0.73f;
     rack.channel[Rack::M101].pan = 0.3f;
-    rack.channel[Rack::M909].level = 0.55f;
+    rack.channel[Rack::M808].level = 0.93f;
+    rack.channel[Rack::M909].level = 0.73f;
     rack.channel[Rack::M909].pan = -0.25f;
+    rack.channel[Rack::M950].level = 0.93f;
+    rack.master = 1.0f;
 
     // the 303 through the DIST, as it always was, echoes on the leads, and the 808 squeezed
     rack.channel[Rack::M303].dist = true;
     rack.channel[Rack::M303].delay = 0.2f;
     rack.channel[Rack::M101].delay = 0.35f;
+    rack.channel[Rack::M808].dist = true;
     rack.channel[Rack::M808].comp = true;
     knob(rack.fx, "distAmount", 0.4f);
 

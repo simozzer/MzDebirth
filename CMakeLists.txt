@@ -161,5 +161,10 @@ add_executable(SeqCheck Tests/SeqCheck.cpp ${CORE_SOURCES})
 target_include_directories(SeqCheck PRIVATE ${CORE_INCLUDES})
 target_compile_definitions(SeqCheck PRIVATE ${CORE_DEFINITIONS})
 
+# A probe for listening questions put into numbers - not a check, and not run by ctest.
+add_executable(KickProbe Tests/KickProbe.cpp ${CORE_SOURCES})
+target_include_directories(KickProbe PRIVATE ${CORE_INCLUDES})
+target_compile_definitions(KickProbe PRIVATE ${CORE_DEFINITIONS})
+
 enable_testing()
 add_test(NAME sequencer COMMAND SeqCheck)

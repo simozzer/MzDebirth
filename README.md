@@ -336,6 +336,13 @@ after its fader, pan and the MASTER: green to -12 dB, yellow to 0, and red over 
 that machine alone would take the output past full scale. It falls as a peak meter does,
 with the highest point held for a second.
 
+The factory rack is mixed to be heard at the level of a record. An 808 kick starts with one
+big half-cycle, with its body - the weight you hear - some 20 dB under it, so left alone it
+holds the whole mix down and the kick sounds thin. So the Mz808 goes through the **DIST**,
+soft, as well as the **COMP**: that shaves the spike and adds the harmonics that let a kick
+through small speakers, and the faders and MASTER come up into **LIMIT**. If your own rack
+sounds weak in the low end, try the same on its kick.
+
 The master has a meter too: **OUT**, beside the RACK and ARRANGE tabs, reads what the rack
 puts out, left and right, after the MASTER and LIMIT. **LIMIT**, next to it, is a limiter on
 the whole mix, the last thing before the output, so the rack never clips: it holds every
@@ -453,6 +460,7 @@ cmake.
     Source/UI/Arrange   the Arrange window, and KEY EDIT and DRUM EDIT
     Source/Processor.*  the rack as a JUCE processor, and its saved state
     Tests/SeqCheck.cpp  the check
+    Tests/KickProbe.cpp measures the kick and the mix's levels - a probe, not a check
     Resources/          the app's icon, and Icon.cs, which draws it
     installer/          the Inno Setup script, the zip's README, and mac/: the Mac's install
                         script and READ ME FIRST, and how its build makes the disks (the
