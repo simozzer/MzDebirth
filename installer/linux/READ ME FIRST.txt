@@ -7,7 +7,9 @@ old ReBirth RB-338. A standalone app, with the Mz950's sample disks.
 Free and open source (AGPLv3). Created by Simon Moscrop. Independent - not
 affiliated with Reason Studios (Propellerhead), Steinberg or Roland.
 
-For 64-bit x86 PCs: Ubuntu 22.04 or later, or another distribution as new.
+For 64-bit x86 PCs (the x86_64 download): Ubuntu 22.04 or later, or another
+distribution as new. For the Raspberry Pi 5 (the arm64 download): 64-bit
+Raspberry Pi OS Bookworm or later.
 
 This is a beta. It's built on GitHub's Ubuntu machines and passes the same
 checks as the Windows version, but hasn't been tried much on real Linux desks.
@@ -21,8 +23,8 @@ RUNNING IT
 Unpack the archive anywhere - your home folder is fine - and run MzDebirth in
 it, from a file manager or a terminal:
 
-  tar -xzf MzDebirth-*-linux-x86_64-beta.tar.gz
-  cd MzDebirth-*-linux-x86_64-beta
+  tar -xzf MzDebirth-*-linux-*-beta.tar.gz
+  cd MzDebirth-*-linux-*-beta
   ./MzDebirth
 
 Nothing is installed and no password is needed. Keep the disks folder beside
@@ -45,6 +47,20 @@ It needs a few libraries most desktops already have. On Ubuntu or Debian:
 
 There's a .deb as well, for Ubuntu and Debian: it installs MzDebirth in the
 menu and fetches all of this itself - see the releases page.
+
+
+ON A RASPBERRY PI 5
+-------------------
+
+Use the arm64 download, on 64-bit Raspberry Pi OS (Bookworm or later) with the
+desktop. The .deb is easiest:
+
+  sudo apt install ./mzdebirth_*_arm64.deb
+
+then MzDebirth is in the menu under Sound & Video. Choose the "default" or
+"pipewire" output under Options. A Pi is much slower than a desktop PC: if the
+sound crackles, raise the buffer size under Options. A Pi 4 on 64-bit
+Raspberry Pi OS may run it too, if more slowly; a 32-bit system will not.
 
 
 UNDER WSL (Windows Subsystem for Linux)

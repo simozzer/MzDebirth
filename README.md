@@ -54,8 +54,10 @@ but not yet tried on a real one. If something doesn't work, please
 
 ### Linux (beta)
 
-For 64-bit x86 PCs running Ubuntu 22.04 or later, or another distribution as new. There are
-two downloads on the [releases page](https://github.com/simozzer/MzDebirth/releases):
+For 64-bit x86 PCs running Ubuntu 22.04 or later, or another distribution as new, and for
+the **Raspberry Pi 5** on 64-bit Raspberry Pi OS (Bookworm or later). There are two
+downloads for each on the [releases page](https://github.com/simozzer/MzDebirth/releases),
+`amd64`/`x86_64` for a PC and `arm64` for the Pi; the PC's are shown here:
 
 - **mzdebirth_*version*_amd64.deb**, for Ubuntu, Debian, Mint and the like. Install it with
 
@@ -72,6 +74,12 @@ two downloads on the [releases page](https://github.com/simozzer/MzDebirth/relea
 
   Keep the `disks` folder beside it. `READ ME FIRST.txt` in it lists the few libraries it
   needs, if a minimal system lacks them.
+
+On a **Raspberry Pi 5**, install `mzdebirth_<version>_arm64.deb` the same way, and find
+MzDebirth under Sound & Video. The Pi is much slower than a desktop PC, so if the sound
+crackles, raise the buffer size under Options. This build is the newest and least tried of
+all: built natively on GitHub's ARM machines and passing the same checks, but not yet run on
+a Pi.
 
 It plays through ALSA, which PipeWire and PulseAudio both provide. It runs under **WSL** on
 Windows 11 too; WSL has no sound card, so it needs ALSA's PulseAudio plugin, which the .deb
