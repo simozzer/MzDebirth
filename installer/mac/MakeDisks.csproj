@@ -3,7 +3,7 @@
 
   On Windows the generator is built with the .NET Framework's csc, which a Mac does not have;
   the Mac build of MzDebirth makes its disks with this instead. Same sources, same disks: all
-  seven come out byte for byte the same as the Windows build's.
+  eight come out byte for byte the same as the Windows build's.
 
   Run as the Mac build runs it, in .github/workflows/mac.yml: SynthRoot is an Mz950 checkout,
   and the one argument the folder to write the disks to.

@@ -20,9 +20,10 @@ too.
 
 Download **MzDebirth-*version*-win64-Setup.exe** from the
 [releases page](https://github.com/simozzer/MzDebirth/releases) and run it. It installs the
-app, a Start menu entry, an uninstaller, and the Mz950's seven sample disks, a piano among
-them; installing for just yourself needs no administrator rights. The **win64.zip** beside
-it is the same, to run without installing - keep the `disks` folder next to `MzDebirth.exe`.
+app, a Start menu entry, an uninstaller, and the Mz950's eight sample disks, a piano and a
+choir among them; installing for just yourself needs no administrator rights. The
+**win64.zip** beside it is the same, to run without installing - keep the `disks` folder next
+to `MzDebirth.exe`.
 
 Windows 10 or 11, 64-bit. The app is not code-signed, so Windows may warn about an unknown
 publisher: choose **More info**, then **Run anyway**.
@@ -210,7 +211,9 @@ Double-click a part to edit it:
 - **Mz950** - plays S900/S950 disk images: **LOAD DISK**, then pick a programme. Its steps
   are a grid of notes, any number on a step, with ACCENT and TIE rows; a tied step carries
   on the notes it shares with the step before. The keys the programme plays are lit, and a
-  drum kit's are named by their samples. It opens with the drum disk that comes with Mz950.
+  drum kit's are named by their samples. It opens with the drum disk that comes with Mz950;
+  **LOAD DISK** finds the other seven beside it - basses, leads, pads, keys, textures, a
+  grand piano, and a choir singing "ooh" and "aah".
 
 The step editors of the **Mz303**, **Mz101** and **Mz950** fold away: click the
 **STEP SEQUENCER** bar over one, and the machine folds down to its knobs, its pattern

@@ -49,7 +49,7 @@ jobs:
 
       # Mz950's sample disks are not in its repository - *.hfe is ignored there - but made
       # by its disk generator, as its own release makes them. The check plays the drum disk,
-      # and the installer ships all seven.
+      # and the installer ships all eight.
       - name: Mz950's disks
         run: |
           ../Mz950/AkaiS950Synth/build.ps1 -To ../Mz950/disks
