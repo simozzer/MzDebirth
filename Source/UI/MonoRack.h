@@ -64,6 +64,7 @@ public:
              const Theme& t, std::vector<Row> layout, bool hasAccent)
         : MonoRack(line.track, channel, std::move(playing), t, std::move(layout), hasAccent)
     {
+        patterns.setMonoRoot(line.rootNote);
         for (int i = 0; i < line.knobs.size(); ++i)
         {
             controls.push_back(makeControl(line.knobs, i, theme));

@@ -18,7 +18,7 @@ namespace
     constexpr int A1 = 0, A2 = 1, A3 = 2, A4 = 3, A5 = 4, A6 = 5, A7 = 6, A8 = 7;
 
     // the lines it is written in - merged at the end into a track a machine
-    enum { Beat, Tops, Fx, Acid, Lead, Riser, Perc, trackCount };
+    enum { Beat, Tops, Fx, Acid, Lead, Riser, Perc, Keys, trackCount };
 
     // C minor, for the riser to climb
     const int scale[] = { 0, 2, 3, 5, 7, 8, 10 };
@@ -177,6 +177,7 @@ Song demoSong(Rack& rack)
         { "Lead",        Rack::M101, 1 },
         { "Riser & Pad", Rack::M101, 6 },
         { "Percussion",  Rack::M950, 4 },
+        { "Keys",        Rack::M7,   5 },
     };
     for (const auto& s : specs)
     {
@@ -280,6 +281,26 @@ Song demoSong(Rack& rack)
     w.pattern(Perc, A6, 48, 4);
     w.pattern(Perc, A7, 52, 8);
 
+    // the Mz7's electric piano: offbeat chords through both drops, and the breakdown's
+    // chords held under the lead - C minor, A flat, B flat, G
+    {
+        const int chords[4][3] = { { 60, 63, 67 }, { 56, 60, 63 }, { 58, 62, 65 }, { 55, 59, 62 } };
+        auto stabs = [&] (int bars)
+        {
+            std::vector<Note> n;
+            for (int b = 0; b < bars; ++b)
+                for (int s : { 2, 6, 10, 14 })
+                    for (int k : chords[(b / 2) % 4]) n.push_back(note(b * bar + s * step, step + step / 2, k, s == 2 ? 110 : 90));
+            return n;
+        };
+        w.part(Keys, "STABS", 28, 8 * bar, stabs(8));
+        std::vector<Note> held;
+        for (int i = 0; i < 4; ++i)
+            for (int k : chords[i]) held.push_back(note(i * 2 * bar, 2 * bar - step, k, 96));
+        w.part(Keys, "CHORDS", 36, 8 * bar, held);
+        w.part(Keys, "STABS", 48, 12 * bar, stabs(12));
+    }
+
     // 61-64: outro - the kick and the acid, thinning out
     w.part(Fx, "CRASH", 60, bar, crash());
     w.pattern(Beat, A1, 60, 4);
@@ -287,7 +308,7 @@ Song demoSong(Rack& rack)
     w.pattern(Acid, A5, 60, 2);
 
     //
-    // Written as seven lines, played as five machines: one track each, as the rack has. The
+    // Written as eight lines, played as six machines: one track each, as the rack has. The
     // 909's tops and its rolls go on one track, and the 101's lead and its risers and pad on
     // another - they never sound together, so the one synth plays both.
     //

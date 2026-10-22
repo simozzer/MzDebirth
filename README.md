@@ -1,7 +1,7 @@
 # MzDebirth
 
 A rack of the Mz synths, played from a step sequencer, in the spirit of the old ReBirth
-RB-338: five machines, each with its own panel, its own patterns and a channel on the mixer,
+RB-338: six machines, each with its own panel, its own patterns and a channel on the mixer,
 all on one clock, with ReBirth's effects units and a reverb along the top. And beside the
 rack, an [Arrange window](#the-arrange-window) after Cubase on the Atari ST, to lay the
 patterns out as a song and write parts of any length - or [record](#recording-a-song) the
@@ -15,7 +15,8 @@ rack into it as you play, as ReBirth did.
 
 It plays the synths' real engines - [Mz303](https://github.com/simozzer/Mz303),
 [Mz101](https://github.com/simozzer/Mz101), [Mz808](https://github.com/simozzer/Mz808),
-[Mz909](https://github.com/simozzer/Mz909) and [Mz950](https://github.com/simozzer/Mz950) -
+[Mz909](https://github.com/simozzer/Mz909), [Mz950](https://github.com/simozzer/Mz950) and
+[Mz7](https://github.com/simozzer/Mz7) -
 and its PCF is [MzPCF](https://github.com/simozzer/MzPCF)'s. Nothing is copied: each engine
 is compiled straight from its own repository, so a fix to a synth or the PCF reaches the rack
 too.
@@ -131,7 +132,7 @@ to a song of your own. If a button seems to do nothing, see
 ## The Arrange window
 
 A second way to work, after Cubase on the Atari ST: the song laid out along a ruler of bars,
-a track for each machine down the left - the rack's five, in its order, one each - and on
+a track for each machine down the left - the rack's six, in its order, one each - and on
 each track *parts*: notes of any length at any position, not 16-step patterns. The rack is
 still a click away, for the sound: every knob, fader and effect plays the song as it plays
 the patterns, and a track's **RACK** goes straight to its machine.
@@ -231,8 +232,14 @@ Double-click a part to edit it:
   **LOAD DISK** finds the other eleven beside it - basses, leads, pads, keys, textures, a
   grand piano, a choir singing "ooh" and "aah", woodwind, brass, and solo and ensemble
   strings. Loading a disk puts the Mz950's knobs back where they start, all but GAIN.
+- **Mz7** - a DX7, from [Mz7](https://github.com/simozzer/Mz7): pick a cartridge - one of the
+  four it comes with, 128 voices of electric pianos, basses, brass, bells, pads and effects -
+  or **LOAD .SYX** for any DX7 cartridge, then a voice. **BRIGHT** moves the voice's
+  modulators, **ATTACK**, **DECAY** and **RELEASE** lengthen or shorten every envelope, and
+  **MOD** is the mod wheel, so whatever vibrato the voice gives it. Its steps are a grid of
+  notes like the Mz950's - chords, accents and ties. GENERATE gives it chords in the key.
 
-The step editors of the **Mz303**, **Mz101** and **Mz950** fold away: click the
+The step editors of the **Mz303**, **Mz101**, **Mz950** and **Mz7** fold away: click the
 **STEP SEQUENCER** bar over one, and the machine folds down to its knobs, its pattern
 section and mixer strip packing down beside them (the inserts and MUTE as lettered keys that
 glow when on, the fader and meter on their sides). The bar stays where it was, under the
@@ -242,7 +249,10 @@ knobs, to unfold it again. The rack remembers which are folded.
 
 Every machine has four banks of eight patterns, of up to sixteen steps (**STEPS**), with
 **COPY**, **PASTE** and **CLEAR**, and its own **SHUFFLE** switch: whether it swings with the
-transport's SHUFFLE knob.
+transport's SHUFFLE knob. A copied pattern pastes onto another machine where it fits: a
+mono synth's line onto the other mono synth, or onto the Mz950 or the Mz7 as notes; the
+Mz950's and the Mz7's notes onto each other; a drum pattern only onto its own machine.
+Chords don't paste onto a mono synth.
 
 Each has a **STOP** too, for taking a machine out of the mix in time: pressed while playing,
 it blinks, and at the start of the next bar the machine lets go of its notes and plays
@@ -420,6 +430,7 @@ On Windows, with Visual Studio's C++ tools. The repositories go side by side:
         Mz808\
         Mz909\
         Mz950\        (or VirtualS950, its old name)
+        Mz7\
         MzPCF\
         MzDebirth\
 

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(MzDebirth VERSION 0.12.1 LANGUAGES C CXX)
+project(MzDebirth VERSION 0.13.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,6 +16,7 @@ set(MZ303_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../Mz303" CACHE PATH "Where Mz303 is
 set(MZ808_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../Mz808" CACHE PATH "Where Mz808 is checked out")
 set(MZ909_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../Mz909" CACHE PATH "Where Mz909 is checked out")
 set(MZPCF_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../MzPCF" CACHE PATH "Where MzPCF is checked out")
+set(MZ7_PATH   "${CMAKE_CURRENT_SOURCE_DIR}/../Mz7"   CACHE PATH "Where Mz7 is checked out")
 
 # Mz950's repository may still be checked out under its old name.
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../Mz950")
@@ -33,7 +34,7 @@ if(NOT EXISTS "${JUCE_PATH}/CMakeLists.txt")
         "or pass -DJUCE_PATH=<wherever it is>.")
 endif()
 
-foreach(machine MZ101 MZ303 MZ808 MZ909 MZPCF)
+foreach(machine MZ101 MZ303 MZ808 MZ909 MZ7 MZPCF)
     if(NOT EXISTS "${${machine}_PATH}/Source")
         message(FATAL_ERROR "No ${machine} at ${${machine}_PATH} - clone it beside this repository, "
                             "or pass -D${machine}_PATH=<wherever it is>.")
@@ -61,6 +62,7 @@ set(CORE_SOURCES
     Source/Core/Bounce.cpp
     Source/Core/DemoSong.cpp
     Source/Core/Effects.cpp
+    Source/Core/Fm.cpp
     Source/Core/Grooves.cpp
     Source/Core/Key.cpp
     Source/Core/Rack.cpp
@@ -76,6 +78,9 @@ set(CORE_SOURCES
     "${MZ950_ENGINE}/Voice.cpp"
     "${MZ950_ENGINE}/Disk.cpp"
     "${MZ950_ENGINE}/Hfe.cpp"
+    "${MZ7_PATH}/Source/DX7/Engine.cpp"
+    "${MZ7_PATH}/Source/DX7/Patch.cpp"
+    "${MZ7_PATH}/Source/DX7/Banks.cpp"
     "${MZPCF_PATH}/Source/PCF/Pcf.cpp")
 
 set(CORE_INCLUDES
@@ -85,6 +90,7 @@ set(CORE_INCLUDES
     "${MZ808_PATH}/Source"
     "${MZ909_PATH}/Source"
     "${MZ950_PATH}/Plugin/Source"
+    "${MZ7_PATH}/Source"
     "${MZPCF_PATH}/Source")
 
 # The sample disks that come with Mz950, for the rack to open with and the check to play.
@@ -127,6 +133,7 @@ target_sources(MzDebirth PRIVATE
     Source/UI/EffectsBar.cpp
     Source/UI/KeyPanel.cpp
     Source/UI/SamplerRack.cpp
+    Source/UI/FmRack.cpp
     Source/UI/MainPanel.cpp
     Source/UI/Arrange/ArrangeState.cpp
     Source/UI/Arrange/ArrangeTransport.cpp
@@ -165,6 +172,14 @@ target_compile_definitions(SeqCheck PRIVATE ${CORE_DEFINITIONS})
 add_executable(KickProbe Tests/KickProbe.cpp ${CORE_SOURCES})
 target_include_directories(KickProbe PRIVATE ${CORE_INCLUDES})
 target_compile_definitions(KickProbe PRIVATE ${CORE_DEFINITIONS})
+
+# Both make whole racks as locals, and a rack - six machines' patterns, the Mz7's sixteen
+# voices, the recording ring - is a good fraction of Windows' 1 MB default stack. Linux and
+# macOS give a program 8 MB; this gives it 16 on Windows too. The app keeps its rack on the heap.
+if(MSVC)
+    target_link_options(SeqCheck PRIVATE /STACK:16777216)
+    target_link_options(KickProbe PRIVATE /STACK:16777216)
+endif()
 
 enable_testing()
 add_test(NAME sequencer COMMAND SeqCheck)

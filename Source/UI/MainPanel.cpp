@@ -299,6 +299,12 @@ namespace
                  juce::Colour(0xffc8281e), juce::Colour(0xff2b2b2b), colours::light };
     }
 
+    Theme theme7()
+    {
+        return { "Mz7", "DIGITAL FM SYNTHESIZER", juce::Colour(0xff2b2622), juce::Colour(0xffeadfd2), juce::Colour(0xff9a8b7d),
+                 juce::Colour(0xff4cc3b0), juce::Colour(0xff161312), juce::Colour(0xffc8553d) };
+    }
+
     std::vector<MonoRack::Row> layout303() { return { { { "", 8 } } }; }
 
     std::vector<MonoRack::Row> layout101()
@@ -389,12 +395,13 @@ RackView::RackView(DebirthProcessor& p)
             theme808(), layout808(), voicesOf(tr808::Voice::count, tr808::voiceInfo), palette808()),
       mz909(p.rack.mz909, p.rack.channel[Rack::M909], [&p] { return p.rack.playing.load(); },
             theme909(), layout909(), voicesOf(tr909::Voice::count, tr909::voiceInfo), palette909()),
-      mz950(p.rack.mz950, p.rack.channel[Rack::M950], [&p] { return p.rack.playing.load(); }, theme950())
+      mz950(p.rack.mz950, p.rack.channel[Rack::M950], [&p] { return p.rack.playing.load(); }, theme950()),
+      mz7(p.rack.mz7, p.rack.channel[Rack::M7], [&p] { return p.rack.playing.load(); }, theme7())
 {
     for (auto* u : units()) addAndMakeVisible(u);
 
     // the melodic machines' step rolls fold away; the drum machines' grids are their panels
-    mz303.onFold = mz101.onFold = mz950.onFold = [this] { folded(); };
+    mz303.onFold = mz101.onFold = mz950.onFold = mz7.onFold = [this] { folded(); };
 }
 
 void RackView::folded()
@@ -402,6 +409,7 @@ void RackView::folded()
     processor.folded[Rack::M303] = mz303.isFolded();
     processor.folded[Rack::M101] = mz101.isFolded();
     processor.folded[Rack::M950] = mz950.isFolded();
+    processor.folded[Rack::M7] = mz7.isFolded();
     if (onHeightChanged) onHeightChanged();
 }
 
@@ -430,7 +438,7 @@ void RackView::paintOverChildren(juce::Graphics& g)
 int RackView::preferredHeight() const
 {
     return gap + mz303.preferredHeight() + gap + mz101.preferredHeight() + gap + mz808.preferredHeight()
-         + gap + mz909.preferredHeight() + gap + mz950.preferredHeight() + gap;
+         + gap + mz909.preferredHeight() + gap + mz950.preferredHeight() + gap + mz7.preferredHeight() + gap;
 }
 
 void RackView::tick(bool blinkPhase)
@@ -440,6 +448,7 @@ void RackView::tick(bool blinkPhase)
     mz808.tick(blinkPhase);
     mz909.tick(blinkPhase);
     mz950.tick(blinkPhase);
+    mz7.tick(blinkPhase);
 
     if (flashTicks > 0 && --flashTicks >= 0) repaint();
 }
@@ -451,6 +460,7 @@ void RackView::follow()
     mz808.follow();
     mz909.follow();
     mz950.follow();
+    mz7.follow();
 }
 
 void RackView::refresh()
@@ -460,10 +470,12 @@ void RackView::refresh()
     mz808.refresh();
     mz909.refresh();
     mz950.refresh();
+    mz7.refresh();
 
     mz303.setFolded(processor.folded[Rack::M303]);
     mz101.setFolded(processor.folded[Rack::M101]);
     mz950.setFolded(processor.folded[Rack::M950]);
+    mz7.setFolded(processor.folded[Rack::M7]);
 }
 
 void RackView::resized()
@@ -471,7 +483,7 @@ void RackView::resized()
     auto r = getLocalBounds();
     r.removeFromTop(gap);
     const int heights[] = { mz303.preferredHeight(), mz101.preferredHeight(), mz808.preferredHeight(),
-                            mz909.preferredHeight(), mz950.preferredHeight() };
+                            mz909.preferredHeight(), mz950.preferredHeight(), mz7.preferredHeight() };
     int i = 0;
     for (auto* u : units())
     {

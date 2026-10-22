@@ -215,7 +215,17 @@ private:
     Pad copy { "COPY" }, paste { "PASTE" }, clear { "CLEAR" };
     std::unique_ptr<LedNumber> steps;
 
-    int clipboard = -1;
+    bool canPaste() const;
+    void copyOut();
+    void pasteIn();
+
+public:
+    // a mono synth's pitch for a step's note 0 at octave 0, so a line keeps its pitches when
+    // pasted onto a machine with another root, or into a roll of notes
+    void setMonoRoot(int root) { monoRoot = root; }
+
+private:
+    int monoRoot = 36;
 };
 
 //

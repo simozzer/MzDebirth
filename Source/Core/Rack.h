@@ -5,6 +5,7 @@
 
 #include "Clock.h"
 #include "Effects.h"
+#include "Fm.h"
 #include "Key.h"
 #include "Machines.h"
 #include "Sampler.h"
@@ -65,14 +66,14 @@ struct Channel
 };
 
 //
-// The whole rack: the clock, the five machines on it, top to bottom, and the mixer they go
+// The whole rack: the clock, the six machines on it, top to bottom, and the mixer they go
 // through. render() is called from the audio thread; the rest is the panel's, except where
 // a machine says otherwise.
 //
 class Rack
 {
 public:
-    enum { M303, M101, M808, M909, M950, channels };
+    enum { M303, M101, M808, M909, M950, M7, channels };
 
     Rack();
     ~Rack();
@@ -113,6 +114,7 @@ public:
     Mz808 mz808;
     Mz909 mz909;
     Mz950 mz950;
+    Mz7 mz7;
     Channel channel[channels];
 
     // the effects units' knobs

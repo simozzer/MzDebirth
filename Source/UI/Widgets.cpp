@@ -364,10 +364,11 @@ PatternPanel::PatternPanel(debirth::TrackBase& t, debirth::Channel& c, std::func
     stop.onPress = [this] { channel.stopWanted = true; };
     addAndMakeVisible(stop);
 
-    copy.setTooltip("Copy this pattern, to paste over another.");
-    copy.onPress = [this] { clipboard = track.selected.load(); };
-    paste.setTooltip("Paste the copied pattern over this one.");
-    paste.onPress = [this] { if (clipboard >= 0) track.copy(clipboard, track.selected.load()); if (onChange) onChange(); };
+    copy.setTooltip("Copy this pattern, to paste over another - on this machine or another. A mono synth's "
+                    "line pastes onto the other mono synth, or onto the Mz950 or the Mz7 as notes; the "
+                    "Mz950's and the Mz7's notes paste onto each other; a drum pattern onto its own machine.");
+    copy.onPress = [this] { copyOut(); };
+    paste.onPress = [this] { pasteIn(); if (onChange) onChange(); };
     clear.setTooltip("Clear this pattern.");
     clear.onPress = [this] { track.clear(track.selected.load()); if (onChange) onChange(); };
     for (auto* b : { &copy, &paste, &clear })
@@ -382,6 +383,128 @@ PatternPanel::PatternPanel(debirth::TrackBase& t, debirth::Channel& c, std::func
     steps->setTooltip("How many steps this pattern has. Drag up or down; double-click for 16.");
     steps->setWheelEnabled(false);
     addAndMakeVisible(*steps);
+}
+
+//
+// THE CLIPBOARD, one for the whole rack: what was copied, by kind, with its notes. A mono
+// synth's line is kept as its steps and the pitch its note 0 plays, so it can go onto the
+// other mono synth or into a roll of notes at the pitches it had; a roll's notes go onto
+// either roll; a drum pattern only back onto its own machine, whose rows are its instruments.
+// Nothing goes from a roll onto a mono synth - chords have nowhere to go on one.
+//
+namespace
+{
+    struct Clip
+    {
+        enum Kind { None, Mono, Notes, Drums } kind = None;
+        const debirth::TrackBase* from = nullptr;
+        int length = debirth::stepsPerPattern;
+        int root = 36;
+        uint32_t steps[debirth::stepsPerPattern] {};
+        uint32_t hits[debirth::NotePattern::rows] {};
+    };
+    Clip clip;
+
+    Clip::Kind kindOf(const debirth::TrackBase& t)
+    {
+        using namespace debirth;
+        if (dynamic_cast<const Track<BassPattern>*>(&t) != nullptr) return Clip::Mono;
+        if (dynamic_cast<const Track<NotePattern>*>(&t) != nullptr) return Clip::Notes;
+        if (dynamic_cast<const Track<DrumPattern>*>(&t) != nullptr) return Clip::Drums;
+        return Clip::None;
+    }
+}
+
+void PatternPanel::copyOut()
+{
+    using namespace debirth;
+    const int index = track.selected.load();
+
+    clip = {};
+    clip.kind = kindOf(track);
+    clip.from = &track;
+    clip.root = monoRoot;
+    clip.length = track.pattern(index).len();
+
+    if (auto* mono = dynamic_cast<Track<BassPattern>*>(&track))
+        for (int i = 0; i < stepsPerPattern; ++i) clip.steps[i] = mono->patterns[index].steps[i].load();
+    else if (auto* notes = dynamic_cast<Track<NotePattern>*>(&track))
+        for (int r = 0; r < NotePattern::rows; ++r) clip.hits[r] = notes->patterns[index].hits[r].load();
+    else if (auto* drums = dynamic_cast<Track<DrumPattern>*>(&track))
+        for (int r = 0; r < DrumPattern::rows; ++r) clip.hits[r] = drums->patterns[index].hits[r].load();
+}
+
+bool PatternPanel::canPaste() const
+{
+    const auto here = kindOf(track);
+    switch (clip.kind)
+    {
+        case Clip::Mono:  return here == Clip::Mono || here == Clip::Notes;
+        case Clip::Notes: return here == Clip::Notes;
+        case Clip::Drums: return clip.from == &track;
+        default:          return false;
+    }
+}
+
+void PatternPanel::pasteIn()
+{
+    using namespace debirth;
+    if (! canPaste()) return;
+    const int index = track.selected.load();
+
+    if (auto* mono = dynamic_cast<Track<BassPattern>*>(&track))
+    {
+        // the same pitches from this machine's root, an octave nearer where they will not reach
+        auto& p = mono->patterns[index];
+        for (int i = 0; i < stepsPerPattern; ++i)
+        {
+            BassStep s = BassStep::unpack(clip.steps[i]);
+            int rel = s.midiNote(clip.root) - monoRoot;
+            while (rel < -12) rel += 12;
+            while (rel > 24) rel -= 12;
+            s.octave = rel < 0 ? -1 : rel > 12 ? 1 : 0;
+            s.note = rel - 12 * s.octave;
+            p.set(i, s);
+        }
+        p.length = clip.length;
+        return;
+    }
+
+    if (auto* notes = dynamic_cast<Track<NotePattern>*>(&track))
+    {
+        auto& p = notes->patterns[index];
+        if (clip.kind == Clip::Notes)
+        {
+            for (int r = 0; r < NotePattern::rows; ++r) p.hits[r].store(clip.hits[r]);
+            p.length = clip.length;
+            return;
+        }
+
+        // a line as notes: each gate a note at its pitch, accents as accents, and a slide onto
+        // the same pitch a tie - the one slide a roll of notes can hold
+        p.clear();
+        for (int i = 0; i < clip.length; ++i)
+        {
+            const BassStep s = BassStep::unpack(clip.steps[i]);
+            if (! s.gate) continue;
+            const int pitch = juce::jlimit(0, NotePattern::notes - 1, s.midiNote(clip.root));
+            p.set(pitch, i, true);
+            if (s.accent) p.set(NotePattern::accentRow, i, true);
+
+            const BassStep before = BassStep::unpack(clip.steps[(i + clip.length - 1) % clip.length]);
+            if (i > 0 && before.gate && before.slide && before.midiNote(clip.root) == s.midiNote(clip.root))
+                p.set(NotePattern::tieRow, i, true);
+        }
+        p.length = clip.length;
+        return;
+    }
+
+    if (auto* drums = dynamic_cast<Track<DrumPattern>*>(&track))
+    {
+        auto& p = drums->patterns[index];
+        for (int r = 0; r < DrumPattern::rows; ++r) p.hits[r].store(clip.hits[r]);
+        p.length = clip.length;
+    }
 }
 
 void PatternPanel::select(int index)
@@ -429,8 +552,12 @@ void PatternPanel::tick(bool blinkPhase)
     // STOP: lit while stopped, blinking while it waits for the bar to stop or to start again
     const bool stopWaiting = playing() && channel.stopWanted.load() != channel.stopped.load();
     stop.setLit(stopWaiting ? blinkPhase : channel.stopped.load());
-    paste.setEnabled(clipboard >= 0);
-    paste.setAlpha(clipboard >= 0 ? 1.0f : 0.5f);
+    const bool can = canPaste();
+    paste.setEnabled(can);
+    paste.setAlpha(can ? 1.0f : 0.5f);
+    paste.setTooltip(can ? "Paste the copied pattern over this one."
+                         : "Nothing copied that this machine can take: copy a pattern first. Chords don't "
+                           "paste onto a mono synth, nor one drum machine's pattern onto the other.");
     steps->repaint();
 }
 

@@ -231,7 +231,7 @@ bool DebirthProcessor::controlOf(const void* table, int index, int& owner, int& 
 {
     using debirth::Rack;
     const void* knobs[Rack::owners] = { &rack.mz303.knobs, &rack.mz101.knobs, &rack.mz808.knobs,
-                                        &rack.mz909.knobs, &rack.mz950.knobs, &rack.fx };
+                                        &rack.mz909.knobs, &rack.mz950.knobs, &rack.mz7.knobs, &rack.fx };
     for (int o = 0; o < Rack::owners; ++o)
         if (table == knobs[o]) { owner = o; param = index; return param >= 0 && param < rack.paramCount(o); }
 
@@ -405,7 +405,7 @@ juce::AudioProcessorEditor* DebirthProcessor::createEditor()
 namespace
 {
     // the machines, as saved: their element names, in rack order
-    const char* const machineNames[Rack::channels] = { "Mz303", "Mz101", "Mz808", "Mz909", "Mz950" };
+    const char* const machineNames[Rack::channels] = { "Mz303", "Mz101", "Mz808", "Mz909", "Mz950", "Mz7" };
 
     template <class S>
     void saveKnobs(juce::ValueTree& t, const Knobs<S>& k)
@@ -677,6 +677,19 @@ juce::ValueTree DebirthProcessor::save() const
     sampler.setProperty("program", rack.mz950.program(), nullptr);
     root.appendChild(sampler, nullptr);
 
+    // The Mz7's cartridge rides along whole - 4 KB - since it may be an edit, or a .syx that has
+    // since moved; one of the four it comes with is saved by its number.
+    auto fm = saveMachine(machineNames[Rack::M7], rack.mz7);
+    fm.setProperty("bank", rack.mz7.bank(), nullptr);
+    fm.setProperty("program", rack.mz7.program(), nullptr);
+    if (rack.mz7.bank() < 0)
+    {
+        const auto s = dx7::cartridgeSysex(rack.mz7.cartridge());
+        fm.setProperty("cartridge", juce::Base64::toBase64(s.data(), s.size()), nullptr);
+        fm.setProperty("cartridgeName", juce::String(rack.mz7.cartridgeName()), nullptr);
+    }
+    root.appendChild(fm, nullptr);
+
     juce::ValueTree effects("Effects");
     saveKnobs(effects, rack.fx);
     root.appendChild(effects, nullptr);
@@ -741,6 +754,7 @@ void DebirthProcessor::load(const juce::ValueTree& root)
     loadMachine(root, machineNames[Rack::M808], rack.mz808);
     loadMachine(root, machineNames[Rack::M909], rack.mz909);
     loadMachine(root, machineNames[Rack::M950], rack.mz950);
+    loadMachine(root, machineNames[Rack::M7], rack.mz7);
 
     // The sampler's disk, if it is still there, and not already in.
     const auto sampler = root.getChildWithName(machineNames[Rack::M950]);
@@ -750,6 +764,23 @@ void DebirthProcessor::load(const juce::ValueTree& root)
         std::string error;
         if (disk.toStdString() == rack.mz950.diskPath() || rack.mz950.loadDisk(disk.toStdString(), error))
             rack.mz950.selectProgram((int) sampler.getProperty("program", 0));
+    }
+
+    // The Mz7's cartridge: one of its own by number, or the one saved with the rack.
+    if (const auto fm = root.getChildWithName(machineNames[Rack::M7]); fm.isValid())
+    {
+        const int b = fm.getProperty("bank", 0);
+        juce::MemoryOutputStream bytes;
+        dx7::Cartridge c;
+        int count = 0;
+        std::string error, warning;
+        if (b < 0 && juce::Base64::convertFromBase64(bytes, fm.getProperty("cartridge").toString())
+            && dx7::readSysex(static_cast<const uint8_t*>(bytes.getData()), bytes.getDataSize(), c, count, error, warning)
+            && count == 32)
+            rack.mz7.setCartridge(c, fm.getProperty("cartridgeName", "CARTRIDGE").toString().toStdString());
+        else
+            rack.mz7.loadBank(juce::jmax(0, b));
+        rack.mz7.selectProgram((int) fm.getProperty("program", 0));
     }
 
     if (const auto effects = root.getChildWithName("Effects"); effects.isValid())
@@ -794,6 +825,7 @@ void DebirthProcessor::startAfresh(bool factoryGrooves)
     rack.mz808.knobs.reset();
     rack.mz909.knobs.reset();
     rack.mz950.knobs.reset();
+    rack.mz7.knobs.reset();
     rack.fx.reset();
 
     for (int m = 0; m < Rack::channels; ++m)

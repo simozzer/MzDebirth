@@ -22,7 +22,7 @@ int machineKind(int machine)
 
 const char* machineName(int machine)
 {
-    static const char* const names[Rack::channels] = { "Mz303", "Mz101", "Mz808", "Mz909", "Mz950" };
+    static const char* const names[Rack::channels] = { "Mz303", "Mz101", "Mz808", "Mz909", "Mz950", "Mz7" };
     return names[std::clamp(machine, 0, Rack::channels - 1)];
 }
 
@@ -175,9 +175,9 @@ namespace
 
     // The 950's: a tied step carries on a note the step before had, so a run of them is one
     // note, from the step that struck it to half way through the last.
-    void samplerNotes(Part& part, const Mz950& m, int pattern, int repeats)
+    void samplerNotes(Part& part, const Track<NotePattern>& t, int pattern, int repeats)
     {
-        const NotePattern& p = m.track.patterns[pattern];
+        const NotePattern& p = t.patterns[pattern];
         const int len = p.len();
         const int total = len * repeats;
 
@@ -224,7 +224,8 @@ Part partFromPattern(Rack& rack, int machine, int pattern, int repeats)
         case Rack::M101: monoNotes(part, rack.mz101, pattern, repeats); break;
         case Rack::M808: drumNotes(part, rack.mz808, machine, pattern, repeats); break;
         case Rack::M909: drumNotes(part, rack.mz909, machine, pattern, repeats); break;
-        default:         samplerNotes(part, rack.mz950, pattern, repeats); break;
+        case Rack::M950: samplerNotes(part, rack.mz950.track, pattern, repeats); break;
+        default:         samplerNotes(part, rack.mz7.track, pattern, repeats); break;
     }
 
     part.sortNotes();

@@ -429,6 +429,9 @@ std::vector<std::string> writeGrooves(Rack& rack)
     rack.channel[Rack::M909].level = 0.93f;   // as loud as the 808: in banks B and D it plays the kick
     rack.channel[Rack::M909].pan = -0.25f;
     rack.channel[Rack::M950].level = 0.93f;
+    rack.channel[Rack::M7].level = 0.8f;
+    rack.channel[Rack::M7].pan = -0.2f;
+    rack.channel[Rack::M7].delay = 0.15f;
     rack.master = 1.0f;
 
     // the 303 through the DIST, as it always was, echoes on the leads, and the 808 squeezed
@@ -852,6 +855,24 @@ void transposeBank(Rack& rack, int bank, Key from, Key to)
         }
     }
 
+    // the Mz7's notes, always tuned
+    {
+        const int fromTonic = 60 + tonicOffset(from);
+        for (int n = 0; n < patternsPerBank; ++n)
+        {
+            auto& p = rack.mz7.track.patterns[bank * patternsPerBank + n];
+            uint32_t moved[NotePattern::notes] {};
+            for (int note = 0; note < NotePattern::notes; ++note)
+            {
+                const uint32_t bits = p.hits[note].load();
+                if (bits == 0) continue;
+                const int into = std::clamp(movePitch(note, fromTonic, from, fromTonic + d, to), 0, NotePattern::notes - 1);
+                moved[into] |= bits;
+            }
+            for (int note = 0; note < NotePattern::notes; ++note) p.hits[note].store(moved[note]);
+        }
+    }
+
     rack.bankKey[bank] = to.index();
 }
 
@@ -914,6 +935,30 @@ void generateBank(Rack& rack, int bank, Key k, int style, unsigned seed)
                    [] (int v) { return isTheBeat(tr808::voiceInfo(v).code); }, r);
             loosen(rack.mz909.track.patterns[index], tr909::Voice::count,
                    [] (int v) { return isTheBeat(tr909::voiceInfo(v).code); }, r);
+        }
+
+        // the Mz7 comps the slot's chord round middle C - stabs in most styles, a pad in Deep
+        // and the breakdown, nothing in a fill - whatever voice it has
+        {
+            auto& q = rack.mz7.track.patterns[index];
+            q.clear();
+            if (role != Role::Fill)
+            {
+                const int home = 60 - ((60 - k.root()) % 12 + 12) % 12;
+                int notes[3];
+                for (int i = 0; i < 3; ++i)
+                    notes[i] = std::clamp(home + degree(k, chord + 2 * i), 0, NotePattern::notes - 1);
+
+                static const char* const stabs[Style::count] = { "....x.......x...", "..x...x...x...x.", "x.....x...x.....", "x.......x......." };
+                const char* h = role == Role::Breakdown ? "x..............." : stabs[style];
+                const bool pad = style == Style::Deep || role == Role::Breakdown;
+                for (int s = 0; s < stepsPerPattern; ++s)
+                {
+                    if (h[s] != 'x' && ! pad) continue;
+                    for (int n : notes) q.set(n, s, true);
+                    if (h[s] != 'x') q.set(NotePattern::tieRow, s, true);
+                }
+            }
         }
 
         // the 950: a kit plays the style's percussion; a tuned programme the slot's chord

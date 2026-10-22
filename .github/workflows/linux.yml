@@ -76,7 +76,7 @@ jobs:
       - name: JUCE, the synths and the PCF, beside the repository
         run: |
           git clone --depth 1 --branch "$JUCE_TAG" https://github.com/juce-framework/JUCE ../JUCE
-          for synth in Mz101 Mz303 Mz808 Mz909 Mz950 MzPCF; do
+          for synth in Mz101 Mz303 Mz808 Mz909 Mz950 Mz7 MzPCF; do
             git clone --depth 1 "https://github.com/simozzer/$synth" "../$synth"
           done
 
@@ -169,7 +169,7 @@ jobs:
           Priority: optional
           Homepage: https://github.com/simozzer/MzDebirth
           Description: rack of the Mz synths, in the spirit of ReBirth RB-338 (beta)
-           Five machines - Mz303, Mz101, Mz808, Mz909 and Mz950 - played from a step
+           Six machines - Mz303, Mz101, Mz808, Mz909, Mz950 and Mz7 - played from a step
            sequencer, with an Arrange window for whole songs, recording, automation and
            export to WAV or FLAC. Includes the Mz950's sample disks.
           EOF

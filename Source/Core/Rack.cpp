@@ -163,7 +163,8 @@ TrackBase& Rack::track(int machine)
         case M101: return mz101.track;
         case M808: return mz808.track;
         case M909: return mz909.track;
-        default:   return mz950.track;
+        case M950: return mz950.track;
+        default:   return mz7.track;
     }
 }
 
@@ -196,6 +197,7 @@ namespace
             case Rack::M808: return f(r.mz808.knobs);
             case Rack::M909: return f(r.mz909.knobs);
             case Rack::M950: return f(r.mz950.knobs);
+            case Rack::M7:   return f(r.mz7.knobs);
             default:         return f(r.fx);
         }
     }
@@ -348,12 +350,14 @@ void Rack::prepare(double sampleRate, int maxBlock)
     mz808.prepare(sampleRate);
     mz909.prepare(sampleRate);
     mz950.prepare(sampleRate);
+    mz7.prepare(sampleRate);
 
     mz303.stop();
     mz101.stop();
     mz808.stop();
     mz909.stop();
     mz950.stop();
+    mz7.stop();
 
     for (auto& in : inserts)
     {
@@ -425,6 +429,7 @@ void Rack::dispatch(const SongPlayer::Due& d)
         case M808: if (on) mz808.hit(d.key, d.velocity); break;
         case M909: if (on) mz909.hit(d.key, d.velocity); break;
         case M950: if (on) mz950.songNoteOn(d.key, d.velocity); else mz950.songNoteOff(d.key); break;
+        case M7:   if (on) mz7.songNoteOn(d.key, d.velocity); else mz7.songNoteOff(d.key); break;
         default: break;
     }
 }
@@ -451,6 +456,7 @@ void Rack::startMachine(int m)
         case M808: mz808.start(); break;
         case M909: mz909.start(); break;
         case M950: mz950.start(); break;
+        case M7:   mz7.start(); break;
         default: break;
     }
 }
@@ -464,6 +470,7 @@ void Rack::stopMachine(int m)
         case M808: mz808.stop(); break;
         case M909: mz909.stop(); break;
         case M950: mz950.stop(); break;
+        case M7:   mz7.stop(); break;
         default: break;
     }
 }
@@ -664,6 +671,7 @@ void Rack::renderMachines(int from, int to)
     mz808.render(buffers[M808].data() + from, n);
     mz909.render(buffers[M909].data() + from, n);
     mz950.render(buffers[M950].data() + from, sampleRight.data() + from, n);
+    mz7.render(buffers[M7].data() + from, n);
 }
 
 void Rack::renderBlock(float* left, float* right, int n)
@@ -676,6 +684,7 @@ void Rack::renderBlock(float* left, float* right, int n)
     mz808.update();
     mz909.update();
     mz950.update(running, quarters, bpm);
+    mz7.update();
 
     int lane[channels];
     for (int m = 0; m < channels; ++m)
@@ -712,6 +721,7 @@ void Rack::renderBlock(float* left, float* right, int n)
             if (plays(M808) && isStep) mz808.step();
             if (plays(M909) && isStep) mz909.step();
             if (plays(M950)) { if (isStep) mz950.step(); else mz950.gateOff(); }
+            if (plays(M7))   { if (isStep) mz7.step(); else mz7.gateOff(); }
 
             // recording: the clock's own step, so the take knows how far it ran with every
             // machine stopped, and each machine's that played
@@ -771,6 +781,7 @@ void Rack::renderBlock(float* left, float* right, int n)
             if (plays(M808) && isStep) mz808.step();
             if (plays(M909) && isStep) mz909.step();
             if (plays(M950)) { if (isStep) mz950.step(); else mz950.gateOff(); }
+            if (plays(M7))   { if (isStep) mz7.step(); else mz7.gateOff(); }
 
             // an overdub: what those machines play, at the song's own steps
             if (isStep && recording.load())
