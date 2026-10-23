@@ -5,6 +5,8 @@
 
 #include "Song.h"
 
+#include <string>
+
 namespace debirth
 {
 
@@ -36,5 +38,32 @@ class Rack;
 constexpr float demoTempo = 132.0f;
 
 Song demoSong(Rack&);
+
+//
+// THE AMBIENT DEMO, the other song a new rack can open with: something to fall asleep to,
+// sixty-four bars at 72 bpm in E flat, three and a half minutes -
+//
+//     1   the sea alone, and the first whales far off
+//     9   the Mz7's pad comes in: E flat, C minor, A flat, B flat, four bars each
+//    17   the 101's slow melody, echoing, over the 303's soft low pulse
+//    33   the melody and the pulse rest: the pad, the sea and the whales
+//    41   the melody again, the other way about, the 303's filter breathing
+//    57   the last chord held, the whales going, the sea fading away
+//
+// No drums. The whales and the sea come from the Mz950's WHALES disk, its WHALE SEA
+// programme - the sea held on the keys above the whales the whole way through.
+//
+// voiceForAmbient() puts the voices in: the WHALES disk into the 950 from `whalesDisk`, unless
+// it is in already, on WHALE SEA, its patterns cleared - the factory ones are the drum disk's -
+// and the Mz7 on WARM PAD. It says whether the whales are in; with no disk, they aren't.
+// dressForAmbient() then sets the knobs - the 101 and 303 voiced soft, the sends and the
+// effects long - and the song's automation is written against those settings. Without the
+// whales, the 950's track is left empty.
+//
+constexpr float ambientTempo = 72.0f;
+
+bool voiceForAmbient(Rack&, const std::string& whalesDisk);
+void dressForAmbient(Rack&);
+Song ambientSong(Rack&, bool whales);
 
 } // namespace debirth

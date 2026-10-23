@@ -185,22 +185,40 @@ namespace
 
 namespace
 {
-    // the demo song to a 16-bit WAV, the factory rack changed by `change` first
-    void demoWav(const char* path, const std::function<void(Rack&)>& change)
+    // A programme chosen on a rack already playing reaches the 950's engine as the app's timer
+    // would hand it over: a block rendered, so the engine takes the patch before, then service.
+    void settle(Rack& r)
+    {
+        std::vector<float> l(512), rr(512);
+        for (int i = 0; i < 2; ++i) { r.render(l.data(), rr.data(), 512); r.mz950.service(); }
+    }
+
+    // the demo song to a 16-bit WAV, the factory rack changed by `change` first - or the
+    // ambient one
+    void demoWav(const char* path, const std::function<void(Rack&)>& change, bool ambient = false)
     {
         Rack r;
 #ifdef MZ950_DISKS
         std::string error;
-        const bool kit = r.mz950.loadDisk(std::string(MZ950_DISKS) + "/DRUMS.hfe", error);
+        const bool kit = ! ambient && r.mz950.loadDisk(std::string(MZ950_DISKS) + "/DRUMS.hfe", error);
+        const std::string whalesDisk = std::string(MZ950_DISKS) + "/WHALES.hfe";
 #else
         const bool kit = false;
+        const std::string whalesDisk;
 #endif
         r.prepare(rate, 512);
         writeGrooves(r);
         if (kit) { r.mz950.selectProgram(0); writeSamplerGrooves(r.mz950); r.mz950.service(); }
-        r.tempo = demoTempo;
+        bool whales = false;
+        if (ambient)
+        {
+            whales = voiceForAmbient(r, whalesDisk);
+            settle(r);
+            dressForAmbient(r);
+        }
+        r.tempo = ambient ? ambientTempo : demoTempo;
         change(r);
-        const Song song = demoSong(r);
+        const Song song = ambient ? ambientSong(r, whales) : demoSong(r);
 
         std::vector<int16_t> pcm;
         bounce(r, song, rate, 3.0, [&] (const float* l, const float* rr, int n, double)
@@ -286,6 +304,7 @@ namespace
 int main(int argc, char** argv)
 {
     if (argc > 1 && std::string(argv[1]) == "--banks") { everyBank(); return 0; }
+    if (argc > 2 && std::string(argv[1]) == "--ambient") { demoWav(argv[2], [] (Rack&) {}, true); return 0; }
     if (argc > 1)
     {
         const std::string folder = argv[1];
@@ -388,3 +407,4 @@ int main(int argc, char** argv)
     std::printf("\n");
     return 0;
 }
+

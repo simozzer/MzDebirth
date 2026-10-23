@@ -13,31 +13,33 @@ using namespace debirth;
 namespace
 {
     //
-    // The drum disk that comes with Mz950: where the installer puts it, or failing that where
-    // the app was built from.
+    // One of the disks that come with Mz950 - DRUMS.hfe, say: where the installer puts it, or
+    // failing that where the app was built from.
     //
     // On Windows that is the disks folder beside the app. A Mac app is a bundle, sealed by its
     // signature, so nothing can be put beside its executable; install.sh puts the disks in the
     // user's Application Support instead, as Mz950's own Mac install does.
     //
-    juce::File defaultDisk()
+    juce::File mz950Disk(const juce::String& file)
     {
        #if JUCE_MAC
         const auto installed = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-                                   .getChildFile("Application Support/MzDebirth/Disks/DRUMS.hfe");
+                                   .getChildFile("Application Support/MzDebirth/Disks").getChildFile(file);
        #else
         const auto installed = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
-                                   .getParentDirectory().getChildFile("disks").getChildFile("DRUMS.hfe");
+                                   .getParentDirectory().getChildFile("disks").getChildFile(file);
        #endif
         if (installed.existsAsFile()) return installed;
 
        #ifdef MZ950_DISKS
-        const auto built = juce::File(juce::String(MZ950_DISKS)).getChildFile("DRUMS.hfe");
+        const auto built = juce::File(juce::String(MZ950_DISKS)).getChildFile(file);
         if (built.existsAsFile()) return built;
        #endif
 
         return {};
     }
+
+    juce::File defaultDisk() { return mz950Disk("DRUMS.hfe"); }
 }
 
 DebirthProcessor::DebirthProcessor()
@@ -47,7 +49,7 @@ DebirthProcessor::DebirthProcessor()
     song.onChange = [this] (const Song& s) { rack.publish(std::make_unique<Playback>(compile(s, &rack))); };
 
     // Something to play the first time it is opened. A saved state replaces it.
-    startAfresh(true);
+    startAfresh(Fresh::AcidDemo);
     startTimerHz(20);
 }
 
@@ -723,7 +725,7 @@ void DebirthProcessor::load(const juce::ValueTree& root)
     if (! root.hasType("MzDebirth")) return;
     if ((int) root.getProperty("version", 0) < 2) return;   // 0.1's racks: two machines, and gone
 
-    startAfresh(false);
+    startAfresh(Fresh::Empty);
 
     rack.tempo = (float) root.getProperty("tempo", 120.0f);
     rack.shuffle = (float) root.getProperty("shuffle", 0.0f);
@@ -813,7 +815,7 @@ void DebirthProcessor::load(const juce::ValueTree& root)
     ++loads;
 }
 
-void DebirthProcessor::startAfresh(bool factoryGrooves)
+void DebirthProcessor::startAfresh(Fresh fresh)
 {
     rack.tempo = 120.0f;
     rack.shuffle = 0.0f;
@@ -847,13 +849,33 @@ void DebirthProcessor::startAfresh(bool factoryGrooves)
         rack.channel[m].stopWanted = false;   // every machine playing again
     }
 
-    // With the factory grooves comes the demo song made from them, ready to play in the
-    // Arrange window; an empty rack starts with an empty song, and its patterns.
-    if (factoryGrooves)
+    // With the factory grooves comes the acid demo made from them, ready to play in the
+    // Arrange window, on the voices it was written for: the drum disk's first kit, and the
+    // Mz7's first cartridge's E.PIANO 1. An empty rack starts with an empty song, and its
+    // patterns.
+    if (fresh == Fresh::AcidDemo)
     {
         writeFactoryGrooves();
+        rack.mz7.loadBank(0);
+        rack.mz7.selectProgram(0);
         rack.tempo = demoTempo;
         song.replace(demoSong(rack));
+        rack.mode = Mode::Song;
+        view = View::Arrange;
+    }
+    //
+    // The ambient demo has the factory grooves in the banks too, for the rack to play
+    // afterwards - all but the 950's, which want the drum disk, and the 950 has the WHALES
+    // disk in instead, on WHALE SEA. The Mz7 is on WARM PAD.
+    //
+    else if (fresh == Fresh::AmbientDemo)
+    {
+        writeFactoryGrooves();
+        const auto disk = mz950Disk("WHALES.hfe");
+        const bool whales = voiceForAmbient(rack, disk.existsAsFile() ? disk.getFullPathName().toStdString() : std::string());
+        dressForAmbient(rack);
+        rack.tempo = ambientTempo;
+        song.replace(ambientSong(rack, whales));
         rack.mode = Mode::Song;
         view = View::Arrange;
     }

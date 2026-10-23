@@ -1671,6 +1671,96 @@ void demo()
     check(restored, "played through, every knob is back where the rack had it");
 }
 
+//
+// The ambient demo: it must stay sane and stay soft - never a gap of silence until the sea
+// fades, nothing as loud as the acid demo's drops - with the whales on their disk, the pad
+// on WARM PAD, and every knob back where it was set after.
+//
+void ambientDemo()
+{
+    std::printf("\nthe ambient demo\n");
+
+    Rack r;
+    r.prepare(48000, 512);
+    writeGrooves(r);
+#ifdef MZ950_DISKS
+    const bool whales = voiceForAmbient(r, std::string(MZ950_DISKS) + "/WHALES.hfe");
+#else
+    const bool whales = voiceForAmbient(r, {});
+#endif
+    // the programme reaches the engine as the app's timer would hand it over: a block
+    // rendered, so the engine takes the patch before it, then service
+    {
+        std::vector<float> l(512), rr(512);
+        for (int i = 0; i < 2; ++i) { r.render(l.data(), rr.data(), 512); r.mz950.service(); }
+    }
+    dressForAmbient(r);
+    r.tempo = ambientTempo;
+    r.mode = Mode::Song;
+
+    const auto fm = r.mz7.programNames();
+    check(r.mz7.program() >= 0 && r.mz7.program() < (int) fm.size() && fm[(size_t) r.mz7.program()] == "WARM PAD",
+          "the Mz7 is on WARM PAD");
+#ifdef MZ950_DISKS
+    check(whales, "the 950 has the WHALES disk in, on WHALE SEA");
+#endif
+
+    const Song s = ambientSong(r, whales);
+    bool inOrder = s.tracks.size() == (size_t) Rack::channels;
+    for (size_t i = 0; inOrder && i < s.tracks.size(); ++i) inOrder = s.tracks[i].machine == (int) i;
+    const bool drumsQuiet = s.tracks[Rack::M808].parts.empty() && s.tracks[Rack::M909].parts.empty();
+    const bool playing = ! s.tracks[Rack::M7].parts.empty() && ! s.tracks[Rack::M101].parts.empty()
+                      && ! s.tracks[Rack::M303].parts.empty() && (s.tracks[Rack::M950].parts.empty() != whales);
+    check(inOrder && drumsQuiet && playing && s.end() == 64 * ticksPerBar,
+          "sixty-four bars: the sea and whales, the pad, the melody and the pulse, and no drums",
+          fmt("%zu tracks, %d bars", s.tracks.size(), s.end() / ticksPerBar));
+
+    std::vector<float> settings[Rack::owners];
+    for (int o = 0; o < Rack::owners; ++o)
+        for (int i = 0; i < r.paramCount(o); ++i) settings[o].push_back(r.paramGet(o, i));
+
+    // every bar's level, as RMS
+    const double perBar = 48000.0 * 60.0 / ambientTempo * 4.0;
+    std::vector<double> energy(64, 0.0), count(64, 0.0);
+    bool finite = true;
+    float peak = 0;
+    int64_t done = 0;
+    bounce(r, s, 48000.0, 0.0, [&] (const float* l, const float* rr, int n, double)
+    {
+        for (int i = 0; i < n; ++i, ++done)
+        {
+            const int b = (int) ((double) done / perBar);
+            if (b >= 64) break;
+            finite &= std::isfinite(l[i]) && std::isfinite(rr[i]);
+            peak = std::fmax(peak, std::fmax(std::fabs(l[i]), std::fabs(rr[i])));
+            energy[(size_t) b] += (double) l[i] * l[i] + (double) rr[i] * rr[i];
+            count[(size_t) b] += 2.0;
+        }
+        return true;
+    });
+    for (size_t b = 0; b < energy.size(); ++b) energy[b] = std::sqrt(energy[b] / std::max(1.0, count[b]));
+
+    std::printf("      bars:");
+    for (int b = 0; b < 64; b += 4) std::printf(" %5d", b + 1);
+    std::printf("\n     level:");
+    for (int b = 0; b < 64; b += 4) std::printf(" %5.3f", (energy[(size_t) b] + energy[(size_t) b + 1] + energy[(size_t) b + 2] + energy[(size_t) b + 3]) / 4);
+    std::printf("\n");
+
+    double quietest = 1.0, loudest = 0.0;
+    for (int b = 0; b < 60; ++b) { quietest = std::min(quietest, energy[(size_t) b]); loudest = std::max(loudest, energy[(size_t) b]); }
+    check(finite && peak < 1.0f, "three and a half minutes of it stay finite, and under full scale", fmt("peak %.2f", peak));
+    if (whales)
+        check(quietest > 0.005, "never a bar of silence before the sea fades", fmt("quietest bar %.4f", quietest));
+    check(loudest < 0.25, "and nothing loud", fmt("loudest bar %.3f", loudest));
+    if (whales)
+        check(energy[63] < energy[58] * 0.5, "the sea fading away at the end", fmt("%.4f after %.4f", energy[63], energy[58]));
+
+    bool restored = true;
+    for (int o = 0; o < Rack::owners; ++o)
+        for (int i = 0; i < r.paramCount(o); ++i) restored &= std::abs(r.paramGet(o, i) - settings[o][(size_t) i]) < 1.0e-3f;
+    check(restored, "played through, every knob is back where it was set");
+}
+
 // LIMIT: whatever goes in, nothing over the ceiling comes out; what was under it comes out
 // as it went in, only later; and switched off, it only delays.
 void limit()
@@ -1810,6 +1900,7 @@ int main()
     limit();
     bounces();
     demo();
+    ambientDemo();
     song();
     stops();
     recording();

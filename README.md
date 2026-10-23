@@ -25,8 +25,8 @@ too.
 
 Download **MzDebirth-*version*-win64-Setup.exe** from the
 [releases page](https://github.com/simozzer/MzDebirth/releases) and run it. It installs the
-app, a Start menu entry, an uninstaller, and the Mz950's twelve sample disks - a piano, a choir, woodwind, brass and
-strings among them; installing for just yourself needs no administrator rights. The
+app, a Start menu entry, an uninstaller, and the Mz950's fifteen sample disks - a piano, a choir, woodwind, brass,
+strings, birdsong, the sea and whales among them; installing for just yourself needs no administrator rights. The
 **win64.zip** beside it is the same, to run without installing - keep the `disks` folder next
 to `MzDebirth.exe`.
 
@@ -78,9 +78,8 @@ downloads for each on the [releases page](https://github.com/simozzer/MzDebirth/
 
 On a **Raspberry Pi 5**, install `mzdebirth_<version>_arm64.deb` the same way, and find
 MzDebirth under Sound & Video. The Pi is much slower than a desktop PC, so if the sound
-crackles, raise the buffer size under Options. This build is the newest and least tried of
-all: built natively on GitHub's ARM machines and passing the same checks, but not yet run on
-a Pi.
+crackles, raise the buffer size under Options. It's built natively on GitHub's ARM machines,
+passes the same checks as the others, and has been played on a Pi 5.
 
 It plays through ALSA, which PipeWire and PulseAudio both provide. It runs under **WSL** on
 Windows 11 too; WSL has no sound card, so it needs ALSA's PulseAudio plugin, which the .deb
@@ -114,8 +113,8 @@ to a song of your own. If a button seems to do nothing, see
   in time with a record. Held, they slow the rack or hurry it - 3% at once, building to 10%
   over two seconds - and let go, it is back on its tempo with the beat moved. The tempo shows
   the bent figure while one is held. The **left and right arrow keys** do the same.
-- **NEW** brings the factory grooves and the demo song back, or clears the rack to write
-  your own.
+- **NEW** brings the factory grooves back with a demo song - the **acid demo**, or the
+  **ambient demo** - or clears the rack to write your own.
 - **SAVE** and **LOAD** keep whole racks - patterns, knobs, mixer, effects and the song - in
   `.mzdebirth` files. The app also remembers where it was left.
 - **RACK** and **ARRANGE** (or F1 and F2), under the effects, switch between the rack and
@@ -149,6 +148,15 @@ silent, and builds for eight bars into the second drop. The song has automation 
 through each build, the 101's filter opens with each riser, and its reverb is turned up for
 the breakdown. The 909's track carries both its grooves and the rolls, and
 the 101's both the lead and the risers and pad, which take turns.
+
+The **ambient demo**, from **NEW**, is the other kind of song: something to fall asleep to.
+It's 64 bars at 72 bpm in E flat, about three and a half minutes, with no drums. The Mz950
+loads its `WHALES` disk, on the `WHALE SEA` programme, and holds the sea the whole way
+through, with whale calls drifting in over it. These are public-domain recordings of
+humpbacks, a blue whale, a minke and an orca. The Mz7 plays slow chords on `WARM PAD`, the 101
+a slow melody through a long echo, and the 303 a soft low pulse. At the end the sea fades
+away. The factory grooves are in the banks as usual, except the Mz950's, which need the drum
+disk.
 
 - **SONG MODE** (beside the tabs) chooses what plays the machines: the song, or - off, as
   ReBirth's PATTERN mode - their patterns. Changed while playing, it waits for the bar.
@@ -454,7 +462,8 @@ control on the rack - 156 of them - is moved alone, by hand and by the song, and
 nothing else. The
 demo song is played through and held to its shape: drops louder than the intro and the
 breakdown, a beat of near silence before each, the long roll's snare level climbing, and
-every knob back where it started. It links no JUCE. Without the disks it skips the Mz950's
+every knob back where it started. So is the ambient demo: never a silent bar until the sea
+fades, nothing loud, and every knob back. It links no JUCE. Without the disks it skips the Mz950's
 checks and says so; `-Release` will not go on without them.
 
 Pushing a version tag (`git push origin v0.3.0`) builds the installer and zip on GitHub -

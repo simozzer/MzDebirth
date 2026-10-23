@@ -510,17 +510,25 @@ MainPanel::MainPanel(DebirthProcessor& p)
 
     transport.onNew = [this]
     {
-        // 1 the factory grooves, 2 an empty rack, 0 neither
-        juce::AlertWindow::showYesNoCancelBox(juce::MessageBoxIconType::QuestionIcon, "Start again?",
+        // the factory grooves with one demo song or the other, an empty rack, or neither
+        using Fresh = DebirthProcessor::Fresh;
+        enum { cancel, acid, ambient, empty };
+        auto* ask = new juce::AlertWindow("Start again?",
             "Every pattern and knob will be replaced - with the factory grooves (four banks: acid, "
-            "techno, electro and deep house), or with an empty rack to write your own.",
-            "Factory grooves", "Empty rack", "Cancel", this,
-            juce::ModalCallbackFunction::create([this] (int choice)
-            {
-                if (choice == 0) return;
-                processor.rack.playing = false;
-                processor.startAfresh(choice == 1);
-            }));
+            "techno, electro and deep house) and a demo song, or with an empty rack to write your own.\n\n"
+            "The acid demo is a rave tune at 132 bpm. The ambient demo is something to fall asleep "
+            "to: the sea and whales, a pad and a slow melody, at 72.",
+            juce::MessageBoxIconType::QuestionIcon, this);
+        ask->addButton("Acid demo", acid);
+        ask->addButton("Ambient demo", ambient);
+        ask->addButton("Empty rack", empty);
+        ask->addButton("Cancel", cancel, juce::KeyPress(juce::KeyPress::escapeKey));
+        ask->enterModalState(true, juce::ModalCallbackFunction::create([this] (int choice)
+        {
+            if (choice == cancel) return;
+            processor.rack.playing = false;
+            processor.startAfresh(choice == acid ? Fresh::AcidDemo : choice == ambient ? Fresh::AmbientDemo : Fresh::Empty);
+        }), true);
     };
     transport.onLoad = [this] { loadFile(); };
     transport.onSave = [this] { saveFile(); };

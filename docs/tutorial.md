@@ -45,8 +45,8 @@ can seem to do nothing at first.
 
 ## 3. Write a pattern
 
-1. Stop, then press **NEW** and choose **Empty rack**. (NEW and **Factory grooves** bring the
-   demo back whenever you want it.)
+1. Stop, then press **NEW** and choose **Empty rack**. (NEW and **Acid demo** bring the demo
+   back whenever you want it - or try **Ambient demo**, the sea and whales.)
 2. With SONG MODE off, press **PLAY**. Silence: every pattern is empty.
 3. **Drums** - on the Mz808, pick an instrument on the select row (**BD**, the bass drum) and
    click steps **1, 5, 9 and 13** on the sixteen keys. Pick **CH**, the closed hat, and click

@@ -46,7 +46,9 @@ public:
     // the whole rack, as saved in a file
     juce::ValueTree save() const;
     void load(const juce::ValueTree&);
-    void startAfresh(bool factoryGrooves);   // every pattern cleared - or filled with the factory grooves
+    // every pattern cleared - or filled with the factory grooves, and one of the demo songs
+    enum class Fresh { Empty, AcidDemo, AmbientDemo };
+    void startAfresh(Fresh);
 
     // The KEY section: the bank it works on - the one the Mz303 shows - and its two buttons.
     int keyBank() const { return rack.mz303.track.selected.load() / debirth::patternsPerBank; }
