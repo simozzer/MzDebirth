@@ -81,6 +81,12 @@ MzDebirth under Sound & Video. The Pi is much slower than a desktop PC, so if th
 crackles, raise the buffer size under Options. It's built natively on GitHub's ARM machines,
 passes the same checks as the others, and has been played on a Pi 5.
 
+With no USB sound card plugged in, the Pi's **HDMI output** is the one that works: ALSA calls it
+`vc4-hdmi-1, MAI PCM i2s-hifi-0` (the number follows the HDMI port you used). MzDebirth chooses it
+the first time it runs on a Pi, so sound should come straight out of the monitor or TV. It never
+overrides a device you picked yourself — if you have already chosen one under Options, change it
+there.
+
 It plays through ALSA, which PipeWire and PulseAudio both provide. It runs under **WSL** on
 Windows 11 too; WSL has no sound card, so it needs ALSA's PulseAudio plugin, which the .deb
 installs and sets up - `READ ME FIRST.txt` says how by hand. It's a beta: built on GitHub's

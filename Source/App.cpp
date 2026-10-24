@@ -14,6 +14,22 @@
 //
 namespace
 {
+    // THE DEFAULT AUDIO DEVICE ON A RASPBERRY PI
+    // With no USB sound card attached, the Pi's HDMI output is the one that works. ALSA names
+    // it "vc4-hdmi-1, MAI PCM i2s-hifi-0" - the number follows the HDMI port, so this is a
+    // wildcard rather than that exact string. JUCE matches it case-insensitively as a wildcard
+    // (AudioDeviceManager::initialiseDefault), and ONLY when there is no saved audio setup: it
+    // picks the device on a first run and never overrides a device the player has chosen. A
+    // pattern matching nothing falls back to the normal default, so this cannot strand anyone.
+    juce::String preferredDefaultDevice()
+    {
+       #if JUCE_LINUX || JUCE_BSD
+        return "vc4-hdmi*";
+       #else
+        return {};
+       #endif
+    }
+
     class Window final : public juce::StandaloneFilterWindow
     {
     public:
@@ -61,7 +77,7 @@ namespace
         {
             window = std::make_unique<Window>(getApplicationName(),
                 juce::LookAndFeel::getDefaultLookAndFeel().findColour(juce::ResizableWindow::backgroundColourId),
-                std::make_unique<juce::StandalonePluginHolder>(properties.getUserSettings(), false, juce::String(),
+                std::make_unique<juce::StandalonePluginHolder>(properties.getUserSettings(), false, preferredDefaultDevice(),
                                                                nullptr, juce::Array<juce::StandalonePluginHolder::PluginInOuts>(),
                                                                false));
             window->setVisible(true);
