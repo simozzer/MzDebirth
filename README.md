@@ -1,7 +1,7 @@
 # MzDebirth
 
 A rack of the Mz synths, played from a step sequencer, in the spirit of the old ReBirth
-RB-338: six machines, each with its own panel, its own patterns and a channel on the mixer,
+RB-338: seven machines, each with its own panel, its own patterns and a channel on the mixer,
 all on one clock, with ReBirth's effects units and a reverb along the top. And beside the
 rack, an [Arrange window](#the-arrange-window) after Cubase on the Atari ST, to lay the
 patterns out as a song and write parts of any length - or [record](#recording-a-song) the
@@ -15,8 +15,8 @@ rack into it as you play, as ReBirth did.
 
 It plays the synths' real engines - [Mz303](https://github.com/simozzer/Mz303),
 [Mz101](https://github.com/simozzer/Mz101), [Mz808](https://github.com/simozzer/Mz808),
-[Mz909](https://github.com/simozzer/Mz909), [Mz950](https://github.com/simozzer/Mz950) and
-[Mz7](https://github.com/simozzer/Mz7) -
+[Mz909](https://github.com/simozzer/Mz909), [Mz950](https://github.com/simozzer/Mz950),
+[Mz7](https://github.com/simozzer/Mz7) and [Mz106](https://github.com/simozzer/Mz106) -
 and its PCF is [MzPCF](https://github.com/simozzer/MzPCF)'s. Nothing is copied: each engine
 is compiled straight from its own repository, so a fix to a synth or the PCF reaches the rack
 too.
@@ -147,15 +147,18 @@ silent, and builds for eight bars into the second drop. The song has automation 
 909's snare level brings the rolls up, the 303's filter opens as the acid line comes in and
 through each build, the 101's filter opens with each riser, and its reverb is turned up for
 the breakdown. The 909's track carries both its grooves and the rolls, and
-the 101's both the lead and the risers and pad, which take turns.
+the 101's both the lead and the risers and pad, which take turns. The Mz106 arpeggiates the chords
+on `ARP PULSE`, in sixteenths through both drops and eighths over the breakdown, its filter
+closed for the breakdown and opening into the second drop.
 
 The **ambient demo**, from **NEW**, is the other kind of song: something to fall asleep to.
 It's 64 bars at 72 bpm in E flat, about three and a half minutes, with no drums. The Mz950
 loads its `WHALES` disk, on the `WHALE SEA` programme, and holds the sea the whole way
 through, with whale calls drifting in over it. These are public-domain recordings of
-humpbacks, a blue whale, a minke and an orca. The Mz7 plays slow chords on `WARM PAD`, the 101
-a slow melody through a long echo, and the 303 a soft low pulse. At the end the sea fades
-away. The factory grooves are in the banks as usual, except the Mz950's, which need the drum
+humpbacks, a blue whale, a fin whale and an orca. The Mz7 plays slow chords on `WARM PAD`,
+the 101 a slow melody through a long echo, and the 303 a soft low pulse. From bar 13 the
+Mz106 drifts in with a soft arpeggio on `SEQ PLUCK`, turning through the chords under a long
+echo, its filter sweeping slowly open and shut. At the end the sea fades away. The factory grooves are in the banks as usual, except the Mz950's, which need the drum
 disk.
 
 - **SONG MODE** (beside the tabs) chooses what plays the machines: the song, or - off, as
@@ -237,29 +240,38 @@ Double-click a part to edit it:
   are a grid of notes, any number on a step, with ACCENT and TIE rows; a tied step carries
   on the notes it shares with the step before. The keys the programme plays are lit, and a
   drum kit's are named by their samples. It opens with the drum disk that comes with Mz950;
-  **LOAD DISK** finds the other eleven beside it - basses, leads, pads, keys, textures, a
-  grand piano, a choir singing "ooh" and "aah", woodwind, brass, and solo and ensemble
-  strings. Loading a disk puts the Mz950's knobs back where they start, all but GAIN.
+  **LOAD DISK** finds the other fourteen beside it - basses, leads, pads, keys, textures,
+  a grand piano, a choir singing "ooh" and "aah", woodwind, brass, solo and ensemble strings,
+  birdsong, the sea, and whales. Loading a disk puts the Mz950's knobs back where they start, all but GAIN.
 - **Mz7** - a DX7, from [Mz7](https://github.com/simozzer/Mz7): pick a cartridge - one of the
   four it comes with, 128 voices of electric pianos, basses, brass, bells, pads and effects -
   or **LOAD .SYX** for any DX7 cartridge, then a voice. **BRIGHT** moves the voice's
   modulators, **ATTACK**, **DECAY** and **RELEASE** lengthen or shorten every envelope, and
   **MOD** is the mod wheel, so whatever vibrato the voice gives it. Its steps are a grid of
   notes like the Mz950's - chords, accents and ties. GENERATE gives it chords in the key.
+- **Mz106** - a Juno-106, from [Mz106](https://github.com/simozzer/Mz106): pick a patch from
+  the 128 it comes with, numbered as a 106 numbers them, A11 to B88 - or **LOAD .SYX** for
+  Juno-106 patches, a bank or a single one. **FREQ**, **RES**, **ENV**, **A** and **R** move
+  the patch's own sliders, **CHORUS** overrides its chorus, and **VOLUME** is the plugin's:
+  a single-note line wants it up, a chord doesn't. A 106 has no velocity, so accents play as
+  any other note. Its steps are a grid of notes like the Mz7's. GENERATE gives it an
+  arpeggio of the chords; its chorus hisses as a real one does.
 
-The step editors of the **Mz303**, **Mz101**, **Mz950** and **Mz7** fold away: click the
-**STEP SEQUENCER** bar over one, and the machine folds down to its knobs, its pattern
+The step editors of the **Mz303**, **Mz101**, **Mz950**, **Mz7** and **Mz106** fold away: click
+the **STEP SEQUENCER** bar over one, and the machine folds down to its knobs, its pattern
 section and mixer strip packing down beside them (the inserts and MUTE as lettered keys that
 glow when on, the fader and meter on their sides). The bar stays where it was, under the
-knobs, to unfold it again. The rack remembers which are folded.
+knobs, to unfold it again. The drum machines fold the other way: their **SOUND** bar folds
+the knobs away and keeps the instrument select and the step keys, since once a pattern is
+down the steps are what you go back to. The rack remembers which are folded.
 
 ![The whole rack in a tall window, the Mz303, Mz101 and Mz950 folded down to their knobs with their pattern sections and mixer strips packed beside them, the Mz808 and Mz909 in full](docs/img/rack-folded.png)
 
 Every machine has four banks of eight patterns, of up to sixteen steps (**STEPS**), with
 **COPY**, **PASTE** and **CLEAR**, and its own **SHUFFLE** switch: whether it swings with the
 transport's SHUFFLE knob. A copied pattern pastes onto another machine where it fits: a
-mono synth's line onto the other mono synth, or onto the Mz950 or the Mz7 as notes; the
-Mz950's and the Mz7's notes onto each other; a drum pattern only onto its own machine.
+mono synth's line onto the other mono synth, or onto the Mz950, the Mz7 or the Mz106 as
+notes; their notes onto each other; a drum pattern only onto its own machine.
 Chords don't paste onto a mono synth.
 
 Each has a **STOP** too, for taking a machine out of the mix in time: pressed while playing,
@@ -439,6 +451,7 @@ On Windows, with Visual Studio's C++ tools. The repositories go side by side:
         Mz909\
         Mz950\        (or VirtualS950, its old name)
         Mz7\
+        Mz106\
         MzPCF\
         MzDebirth\
 

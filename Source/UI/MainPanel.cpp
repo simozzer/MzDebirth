@@ -305,6 +305,12 @@ namespace
                  juce::Colour(0xff4cc3b0), juce::Colour(0xff161312), juce::Colour(0xffc8553d) };
     }
 
+    Theme theme106()
+    {
+        return { "Mz106", "POLYPHONIC SYNTHESIZER", juce::Colour(0xff2c2c2e), juce::Colour(0xffe9e7e1), juce::Colour(0xff8c8a85),
+                 juce::Colour(0xffe0562c), juce::Colour(0xff151515), juce::Colour(0xffd23a2a) };
+    }
+
     std::vector<MonoRack::Row> layout303() { return { { { "", 8 } } }; }
 
     std::vector<MonoRack::Row> layout101()
@@ -396,20 +402,24 @@ RackView::RackView(DebirthProcessor& p)
       mz909(p.rack.mz909, p.rack.channel[Rack::M909], [&p] { return p.rack.playing.load(); },
             theme909(), layout909(), voicesOf(tr909::Voice::count, tr909::voiceInfo), palette909()),
       mz950(p.rack.mz950, p.rack.channel[Rack::M950], [&p] { return p.rack.playing.load(); }, theme950()),
-      mz7(p.rack.mz7, p.rack.channel[Rack::M7], [&p] { return p.rack.playing.load(); }, theme7())
+      mz7(p.rack.mz7, p.rack.channel[Rack::M7], [&p] { return p.rack.playing.load(); }, theme7()),
+      mz106(p.rack.mz106, p.rack.channel[Rack::M106], [&p] { return p.rack.playing.load(); }, theme106())
 {
     for (auto* u : units()) addAndMakeVisible(u);
 
-    // the melodic machines' step rolls fold away; the drum machines' grids are their panels
-    mz303.onFold = mz101.onFold = mz950.onFold = mz7.onFold = [this] { folded(); };
+    // the melodic machines' step rolls fold away, and the drum machines' knobs
+    mz303.onFold = mz101.onFold = mz808.onFold = mz909.onFold = mz950.onFold = mz7.onFold = mz106.onFold = [this] { folded(); };
 }
 
 void RackView::folded()
 {
     processor.folded[Rack::M303] = mz303.isFolded();
     processor.folded[Rack::M101] = mz101.isFolded();
+    processor.folded[Rack::M808] = mz808.isFolded();
+    processor.folded[Rack::M909] = mz909.isFolded();
     processor.folded[Rack::M950] = mz950.isFolded();
     processor.folded[Rack::M7] = mz7.isFolded();
+    processor.folded[Rack::M106] = mz106.isFolded();
     if (onHeightChanged) onHeightChanged();
 }
 
@@ -438,7 +448,7 @@ void RackView::paintOverChildren(juce::Graphics& g)
 int RackView::preferredHeight() const
 {
     return gap + mz303.preferredHeight() + gap + mz101.preferredHeight() + gap + mz808.preferredHeight()
-         + gap + mz909.preferredHeight() + gap + mz950.preferredHeight() + gap + mz7.preferredHeight() + gap;
+         + gap + mz909.preferredHeight() + gap + mz950.preferredHeight() + gap + mz7.preferredHeight() + gap + mz106.preferredHeight() + gap;
 }
 
 void RackView::tick(bool blinkPhase)
@@ -449,6 +459,7 @@ void RackView::tick(bool blinkPhase)
     mz909.tick(blinkPhase);
     mz950.tick(blinkPhase);
     mz7.tick(blinkPhase);
+    mz106.tick(blinkPhase);
 
     if (flashTicks > 0 && --flashTicks >= 0) repaint();
 }
@@ -461,6 +472,7 @@ void RackView::follow()
     mz909.follow();
     mz950.follow();
     mz7.follow();
+    mz106.follow();
 }
 
 void RackView::refresh()
@@ -471,11 +483,15 @@ void RackView::refresh()
     mz909.refresh();
     mz950.refresh();
     mz7.refresh();
+    mz106.refresh();
 
     mz303.setFolded(processor.folded[Rack::M303]);
     mz101.setFolded(processor.folded[Rack::M101]);
+    mz808.setFolded(processor.folded[Rack::M808]);
+    mz909.setFolded(processor.folded[Rack::M909]);
     mz950.setFolded(processor.folded[Rack::M950]);
     mz7.setFolded(processor.folded[Rack::M7]);
+    mz106.setFolded(processor.folded[Rack::M106]);
 }
 
 void RackView::resized()
@@ -483,7 +499,7 @@ void RackView::resized()
     auto r = getLocalBounds();
     r.removeFromTop(gap);
     const int heights[] = { mz303.preferredHeight(), mz101.preferredHeight(), mz808.preferredHeight(),
-                            mz909.preferredHeight(), mz950.preferredHeight(), mz7.preferredHeight() };
+                            mz909.preferredHeight(), mz950.preferredHeight(), mz7.preferredHeight(), mz106.preferredHeight() };
     int i = 0;
     for (auto* u : units())
     {

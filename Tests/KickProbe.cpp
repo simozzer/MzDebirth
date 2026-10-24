@@ -10,6 +10,7 @@
 #include "Core/Rack.h"
 
 #include <cmath>
+#include <cstdlib>
 #include <functional>
 #include <cstdint>
 #include <cstdio>
@@ -208,6 +209,7 @@ namespace
 #endif
         r.prepare(rate, 512);
         writeGrooves(r);
+        if (! ambient) voiceForAcid(r);
         if (kit) { r.mz950.selectProgram(0); writeSamplerGrooves(r.mz950); r.mz950.service(); }
         bool whales = false;
         if (ambient)
@@ -301,10 +303,20 @@ namespace
     }
 }
 
+namespace probe { void levels(); }
+
 int main(int argc, char** argv)
 {
     if (argc > 1 && std::string(argv[1]) == "--banks") { everyBank(); return 0; }
-    if (argc > 2 && std::string(argv[1]) == "--ambient") { demoWav(argv[2], [] (Rack&) {}, true); return 0; }
+    if (argc > 1 && std::string(argv[1]) == "--levels") { probe::levels(); return 0; }
+    if (argc > 2 && (std::string(argv[1]) == "--ambient" || std::string(argv[1]) == "--acid"))
+    {
+        // and with a machine's number after, that machine alone
+        const int solo = argc > 3 ? std::atoi(argv[3]) : -1;
+        demoWav(argv[2], [solo] (Rack& r) { for (int m = 0; solo >= 0 && m < Rack::channels; ++m) r.channel[m].mute = m != solo; },
+                std::string(argv[1]) == "--ambient");
+        return 0;
+    }
     if (argc > 1)
     {
         const std::string folder = argv[1];
@@ -408,3 +420,78 @@ int main(int argc, char** argv)
     return 0;
 }
 
+
+namespace probe
+{
+    //
+    // Each machine alone, as a DAW would hear its plugin: a note or a hit on its default
+    // sound, through a fader at unity, no inserts, no sends, LIMIT off - its peak and its RMS
+    // over the bar, in dBFS.
+    //
+    void levels()
+    {
+        struct Probe { const char* name; int machine; std::vector<int> keys; };
+        const Probe probes[] = {
+            { "Mz303  C2, four notes", Rack::M303, { 36 } },
+            { "Mz101  C3, four notes", Rack::M101, { 48 } },
+            { "Mz808  kick",           Rack::M808, { tr808::voiceInfo(tr808::Voice::BD).note } },
+            { "Mz909  kick",           Rack::M909, { tr909::voiceInfo(tr909::Voice::BD).note } },
+            { "Mz950  PIANO C4",       Rack::M950, { 60 } },
+            { "Mz7    E.PIANO 1 C4",   Rack::M7,   { 60 } },
+            { "Mz7    E.PIANO 1 chord",Rack::M7,   { 60, 64, 67 } },
+            { "Mz106  A11 C3",         Rack::M106, { 48 } },
+            { "Mz106  A11 chord",      Rack::M106, { 60, 64, 67 } },
+        };
+        for (const auto& p : probes)
+        {
+            Rack r;
+#ifdef MZ950_DISKS
+            std::string error;
+            if (p.machine == Rack::M950) { r.mz950.loadDisk(std::string(MZ950_DISKS) + "/PIANO.hfe", error); r.mz950.selectProgram(0); }
+#endif
+            r.prepare(rate, 512);
+            r.tempo = 120;
+            r.shuffle = 0;
+            r.master = 1.0f;
+            r.fx.set(r.fx.indexOf("limiter"), 0.0f);
+            for (int m = 0; m < Rack::channels; ++m)
+            {
+                r.channel[m].mute = m != p.machine;
+                r.channel[m].level = 1.0f;
+                r.channel[m].pan = 0.0f;
+            }
+
+            Song s = defaultSong();
+            Part part;
+            part.length = ticksPerBar;
+            for (int q = 0; q < 4; ++q)
+                for (int k : p.keys)
+                {
+                    Note n;
+                    n.tick = q * ticksPerQuarter;
+                    n.length = ticksPerQuarter / 2;
+                    n.pitch = k;
+                    n.velocity = 100;
+                    part.notes.push_back(n);
+                }
+            part.sortNotes();
+            s.tracks[(size_t) p.machine].parts.push_back(part);
+            s.right = ticksPerBar;
+            r.mode = Mode::Song;
+
+            double sum = 0; int64_t count = 0; float peak = 0;
+            bounce(r, s, rate, 0.5, [&] (const float* l, const float* rr, int n, double)
+            {
+                for (int i = 0; i < n; ++i)
+                {
+                    sum += (double) l[i] * l[i] + (double) rr[i] * rr[i];
+                    count += 2;
+                    peak = std::max(peak, std::max(std::fabs(l[i]), std::fabs(rr[i])));
+                }
+                return true;
+            });
+            std::printf("  %-26s peak %6.1f dBFS   rms %6.1f dBFS\n", p.name,
+                        20.0 * std::log10(std::max(1e-9f, peak)), 10.0 * std::log10(std::max(1e-18, sum / std::max<int64_t>(1, count))));
+        }
+    }
+}

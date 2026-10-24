@@ -190,6 +190,7 @@ void ArrangeView::tick()
     lastHits[Rack::M909] = h909;
     active[Rack::M950] = rack.mz950.activeVoices() > 0;
     active[Rack::M7]   = rack.mz7.activeVoices() > 0;
+    active[Rack::M106] = rack.mz106.activeVoices() > 0;
     tracks.setActivity(active);
 
     transport.tick();

@@ -158,6 +158,7 @@ public:
     void setOpen(bool);
     bool isOpen() const { return open; }
     void setInk(juce::Colour c) { ink = c; repaint(); }
+    void setLabel(const juce::String& l) { label = l; setOpen(open); }   // what it folds: the step sequencer, unless told
 
     std::function<void()> onToggle;
 
@@ -167,6 +168,7 @@ public:
 private:
     bool open = true;
     juce::Colour ink { colours::light };
+    juce::String label { "STEP SEQUENCER" };
 };
 
 //

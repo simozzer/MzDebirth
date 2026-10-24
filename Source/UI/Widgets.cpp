@@ -280,8 +280,8 @@ FoldBar::FoldBar()
 void FoldBar::setOpen(bool b)
 {
     open = b;
-    setTooltip(open ? "Fold the step sequencer away, to see more of the rack at once."
-                    : "Unfold the step sequencer.");
+    setTooltip(open ? "Fold the " + label.toLowerCase() + " away, to see more of the rack at once."
+                    : "Unfold the " + label.toLowerCase() + ".");
     repaint();
 }
 
@@ -305,7 +305,7 @@ void FoldBar::paint(juce::Graphics& g)
     g.fillPath(p);
 
     g.setFont(fonts::bold(9.0f));
-    const juce::String text = open ? "STEP SEQUENCER" : "STEP SEQUENCER  (FOLDED)";
+    const juce::String text = open ? label : label + "  (FOLDED)";
     g.drawText(text, r.withTrimmedLeft(18.0f), juce::Justification::centredLeft);
 
     // a rule on from the text, to the end
@@ -365,8 +365,8 @@ PatternPanel::PatternPanel(debirth::TrackBase& t, debirth::Channel& c, std::func
     addAndMakeVisible(stop);
 
     copy.setTooltip("Copy this pattern, to paste over another - on this machine or another. A mono synth's "
-                    "line pastes onto the other mono synth, or onto the Mz950 or the Mz7 as notes; the "
-                    "Mz950's and the Mz7's notes paste onto each other; a drum pattern onto its own machine.");
+                    "line pastes onto the other mono synth, or onto the Mz950, the Mz7 or the Mz106 as notes; "
+                    "their notes paste onto each other; a drum pattern onto its own machine.");
     copy.onPress = [this] { copyOut(); };
     paste.onPress = [this] { pasteIn(); if (onChange) onChange(); };
     clear.setTooltip("Clear this pattern.");

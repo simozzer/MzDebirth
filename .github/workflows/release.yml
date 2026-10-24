@@ -42,7 +42,7 @@ jobs:
       - name: JUCE, the synths and the PCF, beside the repository
         run: |
           git clone --depth 1 --branch $env:JUCE_TAG https://github.com/juce-framework/JUCE ../JUCE
-          foreach ($synth in "Mz101", "Mz303", "Mz808", "Mz909", "Mz950", "Mz7", "MzPCF") {
+          foreach ($synth in "Mz101", "Mz303", "Mz808", "Mz909", "Mz950", "Mz7", "Mz106", "MzPCF") {
               git clone --depth 1 "https://github.com/simozzer/$synth" "../$synth"
               if ($LASTEXITCODE -ne 0) { throw "could not clone $synth" }
           }

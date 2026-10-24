@@ -37,6 +37,15 @@ DrumRack::DrumRack(Track<DrumPattern>& t, Channel& c, std::function<bool()> p,
         addAndMakeVisible(steps[s]);
     }
 
+    fold.setInk(th.ink);
+    fold.setLabel("SOUND");   // the knobs: the steps under them stay
+    fold.onToggle = [this]
+    {
+        for (auto& c : controls) c->setVisible(fold.isOpen());
+        if (onFold) onFold();
+    };
+    addAndMakeVisible(fold);
+
     addAndMakeVisible(patterns);
     addAndMakeVisible(strip);
     showRow();
@@ -89,13 +98,26 @@ void DrumRack::tick(bool blinkPhase)
 
 int DrumRack::preferredHeight() const
 {
-    return 8 + 30 + maxKnobs * knobHeight + labelHeight + 8 + 24 + 8 + 44 + 10;
+    const int knobs = isFolded() ? 0 : maxKnobs * knobHeight + labelHeight + 4;
+    const int height = 8 + 30 + FoldBar::height + 4 + knobs + 8 + 24 + 8 + 44 + 10;
+    return isFolded() ? juce::jmax(foldedMinimum, height) : height;
+}
+
+void DrumRack::setFolded(bool f)
+{
+    if (f == isFolded()) return;
+    fold.setOpen(! f);
+    for (auto& c : controls) c->setVisible(! f);
 }
 
 void DrumRack::resized()
 {
+    const bool folded = isFolded();
+    patterns.setCompact(folded);
+    strip.setCompact(folded);
+
     auto r = getLocalBounds();
-    patterns.setBounds(r.removeFromLeft(168).withHeight(juce::jmin(getHeight(), 212)));
+    patterns.setBounds(r.removeFromLeft(168).withHeight(folded ? getHeight() : juce::jmin(getHeight(), 212)));
     r.removeFromLeft(6);
     strip.setBounds(r.removeFromRight(84));
     r.removeFromRight(6);
@@ -103,9 +125,12 @@ void DrumRack::resized()
 
     auto inner = r.reduced(10, 8);
     inner.removeFromTop(30);   // the name
+    fold.setBounds(inner.removeFromTop(FoldBar::height));
+    inner.removeFromTop(4);
 
-    // the knob columns, the label under each
-    auto knobArea = inner.removeFromTop(maxKnobs * knobHeight + labelHeight);
+    // the knob columns, the label under each - none, folded
+    auto knobArea = inner.removeFromTop(folded ? 0 : maxKnobs * knobHeight + labelHeight);
+    if (! folded) inner.removeFromTop(4);
     const int w = knobArea.getWidth() / juce::jmax(1, (int) columns.size());
     for (auto& col : columns)
     {
@@ -136,7 +161,7 @@ void DrumRack::paint(juce::Graphics& g)
     theme.drawTitle(g, face.reduced(12, 8).removeFromTop(26));
 
     // a coloured band under each column's knobs, with its name, as on the hardware
-    const int n = (int) columns.size();
+    const int n = isFolded() ? 0 : (int) columns.size();
     for (int c = 0; c < n; ++c)
     {
         const auto& col = columns[(size_t) c];

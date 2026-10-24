@@ -6,6 +6,7 @@
 #include "Clock.h"
 #include "Effects.h"
 #include "Fm.h"
+#include "Juno.h"
 #include "Key.h"
 #include "Machines.h"
 #include "Sampler.h"
@@ -66,14 +67,14 @@ struct Channel
 };
 
 //
-// The whole rack: the clock, the six machines on it, top to bottom, and the mixer they go
+// The whole rack: the clock, the seven machines on it, top to bottom, and the mixer they go
 // through. render() is called from the audio thread; the rest is the panel's, except where
 // a machine says otherwise.
 //
 class Rack
 {
 public:
-    enum { M303, M101, M808, M909, M950, M7, channels };
+    enum { M303, M101, M808, M909, M950, M7, M106, channels };
 
     Rack();
     ~Rack();
@@ -115,6 +116,7 @@ public:
     Mz909 mz909;
     Mz950 mz950;
     Mz7 mz7;
+    Mz106 mz106;
     Channel channel[channels];
 
     // the effects units' knobs
@@ -218,6 +220,7 @@ private:
     int blockSize = 512;
     std::vector<float> buffers[channels];
     std::vector<float> sampleRight;          // the sampler's right side; buffers[M950] is its left
+    std::vector<float> junoRight;            // the Mz106's, its chorus being stereo; buffers[M106] its left
     float gainL[channels] {}, gainR[channels] {}, masterGain = 0;
 
     // the effects: an insert of each per channel, sharing the units' knobs

@@ -22,7 +22,7 @@ int machineKind(int machine)
 
 const char* machineName(int machine)
 {
-    static const char* const names[Rack::channels] = { "Mz303", "Mz101", "Mz808", "Mz909", "Mz950", "Mz7" };
+    static const char* const names[Rack::channels] = { "Mz303", "Mz101", "Mz808", "Mz909", "Mz950", "Mz7", "Mz106" };
     return names[std::clamp(machine, 0, Rack::channels - 1)];
 }
 
@@ -225,7 +225,8 @@ Part partFromPattern(Rack& rack, int machine, int pattern, int repeats)
         case Rack::M808: drumNotes(part, rack.mz808, machine, pattern, repeats); break;
         case Rack::M909: drumNotes(part, rack.mz909, machine, pattern, repeats); break;
         case Rack::M950: samplerNotes(part, rack.mz950.track, pattern, repeats); break;
-        default:         samplerNotes(part, rack.mz7.track, pattern, repeats); break;
+        case Rack::M7:   samplerNotes(part, rack.mz7.track, pattern, repeats); break;
+        default:         samplerNotes(part, rack.mz106.track, pattern, repeats); break;
     }
 
     part.sortNotes();

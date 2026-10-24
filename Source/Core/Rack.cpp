@@ -164,7 +164,8 @@ TrackBase& Rack::track(int machine)
         case M808: return mz808.track;
         case M909: return mz909.track;
         case M950: return mz950.track;
-        default:   return mz7.track;
+        case M7:   return mz7.track;
+        default:   return mz106.track;
     }
 }
 
@@ -198,6 +199,7 @@ namespace
             case Rack::M909: return f(r.mz909.knobs);
             case Rack::M950: return f(r.mz950.knobs);
             case Rack::M7:   return f(r.mz7.knobs);
+            case Rack::M106: return f(r.mz106.knobs);
             default:         return f(r.fx);
         }
     }
@@ -341,6 +343,7 @@ void Rack::prepare(double sampleRate, int maxBlock)
     blockSize = maxBlock > 0 ? maxBlock : 512;
     for (auto& b : buffers) b.assign((size_t) blockSize, 0.0f);
     sampleRight.assign((size_t) blockSize, 0.0f);
+    junoRight.assign((size_t) blockSize, 0.0f);
 
     clock.prepare(sampleRate);
     clock.stop();
@@ -351,6 +354,7 @@ void Rack::prepare(double sampleRate, int maxBlock)
     mz909.prepare(sampleRate);
     mz950.prepare(sampleRate);
     mz7.prepare(sampleRate);
+    mz106.prepare(sampleRate);
 
     mz303.stop();
     mz101.stop();
@@ -358,6 +362,7 @@ void Rack::prepare(double sampleRate, int maxBlock)
     mz909.stop();
     mz950.stop();
     mz7.stop();
+    mz106.stop();
 
     for (auto& in : inserts)
     {
@@ -430,6 +435,7 @@ void Rack::dispatch(const SongPlayer::Due& d)
         case M909: if (on) mz909.hit(d.key, d.velocity); break;
         case M950: if (on) mz950.songNoteOn(d.key, d.velocity); else mz950.songNoteOff(d.key); break;
         case M7:   if (on) mz7.songNoteOn(d.key, d.velocity); else mz7.songNoteOff(d.key); break;
+        case M106: if (on) mz106.songNoteOn(d.key, d.velocity); else mz106.songNoteOff(d.key); break;
         default: break;
     }
 }
@@ -457,6 +463,7 @@ void Rack::startMachine(int m)
         case M909: mz909.start(); break;
         case M950: mz950.start(); break;
         case M7:   mz7.start(); break;
+        case M106: mz106.start(); break;
         default: break;
     }
 }
@@ -471,6 +478,7 @@ void Rack::stopMachine(int m)
         case M909: mz909.stop(); break;
         case M950: mz950.stop(); break;
         case M7:   mz7.stop(); break;
+        case M106: mz106.stop(); break;
         default: break;
     }
 }
@@ -672,6 +680,7 @@ void Rack::renderMachines(int from, int to)
     mz909.render(buffers[M909].data() + from, n);
     mz950.render(buffers[M950].data() + from, sampleRight.data() + from, n);
     mz7.render(buffers[M7].data() + from, n);
+    mz106.render(buffers[M106].data() + from, junoRight.data() + from, n);
 }
 
 void Rack::renderBlock(float* left, float* right, int n)
@@ -685,6 +694,7 @@ void Rack::renderBlock(float* left, float* right, int n)
     mz909.update();
     mz950.update(running, quarters, bpm);
     mz7.update();
+    mz106.update();
 
     int lane[channels];
     for (int m = 0; m < channels; ++m)
@@ -722,6 +732,7 @@ void Rack::renderBlock(float* left, float* right, int n)
             if (plays(M909) && isStep) mz909.step();
             if (plays(M950)) { if (isStep) mz950.step(); else mz950.gateOff(); }
             if (plays(M7))   { if (isStep) mz7.step(); else mz7.gateOff(); }
+            if (plays(M106)) { if (isStep) mz106.step(); else mz106.gateOff(); }
 
             // recording: the clock's own step, so the take knows how far it ran with every
             // machine stopped, and each machine's that played
@@ -782,6 +793,7 @@ void Rack::renderBlock(float* left, float* right, int n)
             if (plays(M909) && isStep) mz909.step();
             if (plays(M950)) { if (isStep) mz950.step(); else mz950.gateOff(); }
             if (plays(M7))   { if (isStep) mz7.step(); else mz7.gateOff(); }
+            if (plays(M106)) { if (isStep) mz106.step(); else mz106.gateOff(); }
 
             // an overdub: what those machines play, at the song's own steps
             if (isStep && recording.load())
@@ -827,7 +839,7 @@ void Rack::renderBlock(float* left, float* right, int n)
     {
         Channel& ch = channel[c];
         float* srcL = buffers[c].data();
-        float* srcR = c == M950 ? sampleRight.data() : nullptr;
+        float* srcR = c == M950 ? sampleRight.data() : c == M106 ? junoRight.data() : nullptr;
 
         Inserts& in = inserts[c];
         if (ch.dist.load())

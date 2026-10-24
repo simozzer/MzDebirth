@@ -4,6 +4,7 @@
 #include "Processor.h"
 #include "Core/DemoSong.h"
 #include "Core/Grooves.h"
+#include "J106/Banks.h"
 #include "UI/MainPanel.h"
 
 using namespace debirth;
@@ -233,7 +234,8 @@ bool DebirthProcessor::controlOf(const void* table, int index, int& owner, int& 
 {
     using debirth::Rack;
     const void* knobs[Rack::owners] = { &rack.mz303.knobs, &rack.mz101.knobs, &rack.mz808.knobs,
-                                        &rack.mz909.knobs, &rack.mz950.knobs, &rack.mz7.knobs, &rack.fx };
+                                        &rack.mz909.knobs, &rack.mz950.knobs, &rack.mz7.knobs, &rack.mz106.knobs,
+                                        &rack.fx };
     for (int o = 0; o < Rack::owners; ++o)
         if (table == knobs[o]) { owner = o; param = index; return param >= 0 && param < rack.paramCount(o); }
 
@@ -407,7 +409,7 @@ juce::AudioProcessorEditor* DebirthProcessor::createEditor()
 namespace
 {
     // the machines, as saved: their element names, in rack order
-    const char* const machineNames[Rack::channels] = { "Mz303", "Mz101", "Mz808", "Mz909", "Mz950", "Mz7" };
+    const char* const machineNames[Rack::channels] = { "Mz303", "Mz101", "Mz808", "Mz909", "Mz950", "Mz7", "Mz106" };
 
     template <class S>
     void saveKnobs(juce::ValueTree& t, const Knobs<S>& k)
@@ -692,6 +694,17 @@ juce::ValueTree DebirthProcessor::save() const
     }
     root.appendChild(fm, nullptr);
 
+    // The Mz106's bank likewise: its own by name, or whole - 3 KB - when it came from a .syx.
+    auto juno = saveMachine(machineNames[Rack::M106], rack.mz106);
+    juno.setProperty("program", rack.mz106.program(), nullptr);
+    if (! rack.mz106.isFactory())
+    {
+        const auto s = j106::bankSysex(rack.mz106.bank());
+        juno.setProperty("bank", juce::Base64::toBase64(s.data(), s.size()), nullptr);
+        juno.setProperty("bankName", juce::String(rack.mz106.bankName()), nullptr);
+    }
+    root.appendChild(juno, nullptr);
+
     juce::ValueTree effects("Effects");
     saveKnobs(effects, rack.fx);
     root.appendChild(effects, nullptr);
@@ -757,6 +770,7 @@ void DebirthProcessor::load(const juce::ValueTree& root)
     loadMachine(root, machineNames[Rack::M909], rack.mz909);
     loadMachine(root, machineNames[Rack::M950], rack.mz950);
     loadMachine(root, machineNames[Rack::M7], rack.mz7);
+    loadMachine(root, machineNames[Rack::M106], rack.mz106);
 
     // The sampler's disk, if it is still there, and not already in.
     const auto sampler = root.getChildWithName(machineNames[Rack::M950]);
@@ -783,6 +797,22 @@ void DebirthProcessor::load(const juce::ValueTree& root)
         else
             rack.mz7.loadBank(juce::jmax(0, b));
         rack.mz7.selectProgram((int) fm.getProperty("program", 0));
+    }
+
+    // The Mz106's bank: the factory's, or the one saved with the rack.
+    if (const auto juno = root.getChildWithName(machineNames[Rack::M106]); juno.isValid())
+    {
+        juce::MemoryOutputStream bytes;
+        j106::Bank b = j106::factoryBank();
+        int count = 0;
+        std::string error;
+        if (juce::Base64::convertFromBase64(bytes, juno.getProperty("bank").toString())
+            && j106::readSysex(static_cast<const uint8_t*>(bytes.getData()), bytes.getDataSize(), b, count, error)
+            && count > 0)
+            rack.mz106.setBank(b, juno.getProperty("bankName", "BANK").toString().toStdString());
+        else
+            rack.mz106.loadFactory();
+        rack.mz106.selectProgram((int) juno.getProperty("program", 0));
     }
 
     if (const auto effects = root.getChildWithName("Effects"); effects.isValid())
@@ -828,6 +858,7 @@ void DebirthProcessor::startAfresh(Fresh fresh)
     rack.mz909.knobs.reset();
     rack.mz950.knobs.reset();
     rack.mz7.knobs.reset();
+    rack.mz106.knobs.reset();
     rack.fx.reset();
 
     for (int m = 0; m < Rack::channels; ++m)
@@ -850,14 +881,13 @@ void DebirthProcessor::startAfresh(Fresh fresh)
     }
 
     // With the factory grooves comes the acid demo made from them, ready to play in the
-    // Arrange window, on the voices it was written for: the drum disk's first kit, and the
-    // Mz7's first cartridge's E.PIANO 1. An empty rack starts with an empty song, and its
+    // Arrange window, on the voices it was written for: the drum disk's first kit, the Mz7's
+    // E.PIANO 1 and the Mz106's ARP PULSE. An empty rack starts with an empty song, and its
     // patterns.
     if (fresh == Fresh::AcidDemo)
     {
         writeFactoryGrooves();
-        rack.mz7.loadBank(0);
-        rack.mz7.selectProgram(0);
+        voiceForAcid(rack);
         rack.tempo = demoTempo;
         song.replace(demoSong(rack));
         rack.mode = Mode::Song;
@@ -866,7 +896,7 @@ void DebirthProcessor::startAfresh(Fresh fresh)
     //
     // The ambient demo has the factory grooves in the banks too, for the rack to play
     // afterwards - all but the 950's, which want the drum disk, and the 950 has the WHALES
-    // disk in instead, on WHALE SEA. The Mz7 is on WARM PAD.
+    // disk in instead, on WHALE SEA. The Mz7 is on WARM PAD, the Mz106 on SEQ PLUCK.
     //
     else if (fresh == Fresh::AmbientDemo)
     {

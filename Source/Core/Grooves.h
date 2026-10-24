@@ -62,7 +62,7 @@ Key detectKey(Rack&, int bank);
 void transposeBank(Rack&, int bank, Key from, Key to);
 
 //
-// Fills a bank, on all five machines, with eight new patterns in a key and a style - laid
+// Fills a bank, on every machine, with eight new patterns in a key and a style - laid
 // out as the factory banks are: 1 to 3, 6 and 7 grooves, 4 and 8 fills, 5 a breakdown -
 // over a progression the key's chords make. The bass lines and leads are made from the
 // scale; the drums from the style's factory patterns, each moved about a little. The same

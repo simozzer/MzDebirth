@@ -20,7 +20,7 @@ namespace
     constexpr int A1 = 0, A2 = 1, A3 = 2, A4 = 3, A5 = 4, A6 = 5, A7 = 6, A8 = 7;
 
     // the lines it is written in - merged at the end into a track a machine
-    enum { Beat, Tops, Fx, Acid, Lead, Riser, Perc, Keys, trackCount };
+    enum { Beat, Tops, Fx, Acid, Lead, Riser, Perc, Keys, Arp, trackCount };
 
     // C minor, for the riser to climb
     const int scale[] = { 0, 2, 3, 5, 7, 8, 10 };
@@ -180,6 +180,7 @@ Song demoSong(Rack& rack)
         { "Riser & Pad", Rack::M101, 6 },
         { "Percussion",  Rack::M950, 4 },
         { "Keys",        Rack::M7,   5 },
+        { "Arp",         Rack::M106, 6 },
     };
     for (const auto& s : specs)
     {
@@ -303,6 +304,25 @@ Song demoSong(Rack& rack)
         w.part(Keys, "STABS", 48, 12 * bar, stabs(12));
     }
 
+    // the Mz106 arpeggiating the same chords up two octaves from middle C, as a Juno's own
+    // arpeggiator would: sixteenths through both drops, eighths over the breakdown
+    {
+        const int chords[4][3] = { { 60, 63, 67 }, { 56, 60, 63 }, { 58, 62, 65 }, { 55, 59, 62 } };
+        auto arp = [&] (int bars, int every)
+        {
+            std::vector<Note> n;
+            for (int s = 0, i = 0; s < bars * 16; s += every, ++i)
+            {
+                const int up = i % 6;
+                n.push_back(note(s * step, every * step - step / 4, chords[(s / 32) % 4][up % 3] + 12 * (up / 3), 100));
+            }
+            return n;
+        };
+        w.part(Arp, "ARP", 28, 8 * bar, arp(8, 1));
+        w.part(Arp, "ARP", 36, 8 * bar, arp(8, 2));
+        w.part(Arp, "ARP", 48, 12 * bar, arp(12, 1));
+    }
+
     // 61-64: outro - the kick and the acid, thinning out
     w.part(Fx, "CRASH", 60, bar, crash());
     w.pattern(Beat, A1, 60, 4);
@@ -325,6 +345,7 @@ Song demoSong(Rack& rack)
     //   the 909's SD LEVEL the rolls getting louder - the long one from almost nothing
     //   the 101's FREQ     opening with each riser
     //   the 101's REVERB   sent up for the breakdown's long notes
+    //   the 106's FREQ     closed for the breakdown's arpeggio, opening into the second drop
     //
     Automator a { rack, song };
     const float cutoff = a.setting(Rack::M303, "cutoff");
@@ -348,6 +369,10 @@ Song demoSong(Rack& rack)
     });
     a.turn(Rack::M101, "mixReverb", {
         { { 36 * bar, reverb }, { 37 * bar, 0.5f }, { 44 * bar - step, 0.5f } },
+    });
+    const float arpFreq = a.setting(Rack::M106, "freq");
+    a.turn(Rack::M106, "freq", {
+        { { 36 * bar, std::max(-5.0f, arpFreq - 2.5f) }, { 48 * bar - beat, std::min(5.0f, arpFreq + 2.0f) } },
     });
 
     song.left = 0;
@@ -409,6 +434,23 @@ namespace
         }
         return -1;
     }
+
+    // the Mz106 on the factory patch of that name, the factory bank put back if it isn't in
+    void junoPatch(Rack& rack, const std::string& name)
+    {
+        if (! rack.mz106.isFactory()) rack.mz106.loadFactory();
+        const auto& patches = rack.mz106.bank().patches;
+        for (size_t i = 0; i < patches.size(); ++i)
+            if (patches[i].name == name) { rack.mz106.selectProgram((int) i); return; }
+    }
+}
+
+void voiceForAcid(Rack& rack)
+{
+    rack.mz7.loadBank(0);
+    rack.mz7.selectProgram(0);   // E.PIANO 1
+    junoPatch(rack, "ARP PULSE");
+    setKnob(rack, Rack::M106, "volume", 12.0f);   // one note at a time: the chords' headroom isn't wanted
 }
 
 bool voiceForAmbient(Rack& rack, const std::string& whalesDisk)
@@ -432,6 +474,7 @@ bool voiceForAmbient(Rack& rack, const std::string& whalesDisk)
             break;
         }
     }
+    junoPatch(rack, "SEQ PLUCK");
     return whales;
 }
 
@@ -466,10 +509,18 @@ void dressForAmbient(Rack& rack)
     setKnob(rack, Rack::M303, "decay", 8.0f);
     setKnob(rack, Rack::M303, "accent", 0.0f);
 
+    // the 950 a little closed, the whales softer, further off, under the water
+    setKnob(rack, Rack::M950, "cutoff", -20.0f);
+
     // the Mz7's pad slower in and out, a little darker
     setKnob(rack, Rack::M7, "bright", -8.0f);
     setKnob(rack, Rack::M7, "attack", -20.0f);
     setKnob(rack, Rack::M7, "release", -25.0f);
+
+    // the 106's pluck a little darker and longer, for an arpeggio under the rest
+    setKnob(rack, Rack::M106, "freq", -1.0f);
+    setKnob(rack, Rack::M106, "release", 1.5f);
+    setKnob(rack, Rack::M106, "volume", 12.0f);   // one note at a time, so up
 
     // a long echo - six sixteenths - and a long dark hall
     setKnob(rack, Rack::FX, "delaySteps", 6.0f);
@@ -484,7 +535,8 @@ void dressForAmbient(Rack& rack)
     for (const Mix& m : { Mix { Rack::M950, 0.8f,  0.0f,  0.35f },
                           Mix { Rack::M7,   0.5f,  0.1f,  0.5f },
                           Mix { Rack::M101, 0.45f, 0.45f, 0.6f },
-                          Mix { Rack::M303, 0.55f, 0.0f,  0.2f } })
+                          Mix { Rack::M303, 0.55f, 0.0f,  0.2f },
+                          Mix { Rack::M106, 0.6f,  0.5f,  0.55f } })
     {
         rack.channel[m.machine].level = m.level;
         rack.channel[m.machine].delay = m.delay;
@@ -496,13 +548,14 @@ Song ambientSong(Rack& rack, bool whales)
 {
     Song song;
 
-    enum { Sea, Pad, Melody, Bass, lines };
+    enum { Sea, Pad, Melody, Bass, Arp, lines };
     struct Spec { const char* name; int machine; int colour; };
     const Spec specs[lines] = {
         { "Sea & Whales", Rack::M950, 4 },
         { "Pad",          Rack::M7,   5 },
         { "Melody",       Rack::M101, 1 },
         { "Pulse",        Rack::M303, 0 },
+        { "Arpeggio",     Rack::M106, 6 },
     };
     for (const auto& s : specs)
     {
@@ -523,6 +576,7 @@ Song ambientSong(Rack& rack, bool whales)
     //
     if (whales)
     {
+        // no sperm whale or minke: their calls are trains of clicks, wrong for sleep
         enum { Humpback, Moo, Blue, Fin, Minke, Orca, Sperm, Blow };
         auto key = [] (int whale, int below) { return 35 + 12 * whale - below; };
 
@@ -530,11 +584,11 @@ Song ambientSong(Rack& rack, bool whales)
         struct Call { int bar, beat, whale, below, velocity; };
         const Call calls[] = {
             { 2, 1, Moo, 2, 70 },      { 6, 0, Humpback, 3, 80 },  { 11, 2, Blue, 5, 75 },
-            { 14, 0, Minke, 4, 60 },   { 18, 1, Moo, 0, 85 },      { 21, 3, Orca, 5, 60 },
-            { 25, 0, Humpback, 0, 90 },{ 28, 2, Sperm, 3, 50 },    { 30, 0, Blow, 4, 60 },
+            { 14, 0, Blue, 2, 60 },   { 18, 1, Moo, 0, 85 },      { 21, 3, Orca, 5, 60 },
+            { 25, 0, Humpback, 0, 90 },{ 28, 2, Fin, 2, 55 },    { 30, 0, Blow, 4, 60 },
             { 32, 1, Blue, 7, 85 },    { 34, 2, Moo, 5, 80 },      { 36, 0, Humpback, 5, 85 },
             { 37, 3, Orca, 2, 65 },    { 38, 2, Fin, 0, 70 },      { 42, 0, Moo, 3, 80 },
-            { 45, 2, Minke, 7, 60 },   { 49, 0, Humpback, 2, 85 }, { 52, 1, Blue, 3, 75 },
+            { 45, 2, Fin, 5, 55 },   { 49, 0, Humpback, 2, 85 }, { 52, 1, Blue, 3, 75 },
             { 55, 3, Orca, 7, 55 },    { 57, 0, Moo, 5, 75 },      { 60, 2, Humpback, 7, 65 },
         };
         // one part: parts on a track that overlap play only the later
@@ -575,6 +629,23 @@ Song ambientSong(Rack& rack, bool whales)
     w.part(Bass, "PULSE", 16, 16 * bar, pulse(2));   // bar 17 is the progression's third block
     w.part(Bass, "PULSE", 40, 16 * bar, pulse(0));
 
+    //
+    // The Mz106's arpeggio, bars 13 to 56: sixteenths turning through the pad's chord an octave
+    // up, in an order that never quite settles - soft, and left to the echo and the hall.
+    //
+    {
+        const int order[16] = { 0, 2, 4, 1, 3, 2, 4, 3, 0, 2, 4, 1, 3, 4, 2, 1 };
+        std::vector<Note> notes;
+        for (int b = 12; b < 56; ++b)
+        {
+            const auto& chord = padChords[((b - 8) / 4) % 4];
+            for (int s = 0; s < 16; ++s)
+                notes.push_back(note((b - 12) * bar + s * step, step - step / 4,
+                                     chord[(size_t) (order[s] % (int) chord.size())] + 12, 100));
+        }
+        w.part(Arp, "ARPEGGIO", 12, 44 * bar, notes);
+    }
+
     song = oneTrackPerMachine(std::move(song));
 
     //
@@ -584,6 +655,8 @@ Song ambientSong(Rack& rack, bool whales)
     //   the 101's FREQ     opening a little through the second melody
     //   the 950's LEVEL    the sea fading away over the last four bars
     //   the Mz7's LEVEL    and the last chord with it
+    //   the 106's LEVEL    the arpeggio drifting in, and out again before the end
+    //   the 106's FREQ     sweeping slowly open and shut the whole time it plays
     //
     Automator a { rack, song };
     const float cutoff = a.setting(Rack::M303, "cutoff");
@@ -604,6 +677,17 @@ Song ambientSong(Rack& rack, bool whales)
         });
     a.turn(Rack::M7, "mixLevel", {
         { { 60 * bar, padLevel }, { 64 * bar - step, 0.0f } },
+    });
+    const float arpLevel = a.setting(Rack::M106, "mixLevel");
+    a.turn(Rack::M106, "mixLevel", {
+        { { 12 * bar, 0.0f }, { 17 * bar, arpLevel } },
+        { { 52 * bar, arpLevel }, { 56 * bar - step, 0.0f } },
+    });
+    const float arpFreq = a.setting(Rack::M106, "freq");
+    auto sweep = [arpFreq] (float by) { return std::clamp(arpFreq + by, -5.0f, 5.0f); };
+    a.turn(Rack::M106, "freq", {
+        { { 12 * bar, sweep(-2.5f) }, { 24 * bar, sweep(1.0f) }, { 36 * bar, sweep(-2.0f) },
+          { 48 * bar, sweep(1.5f) }, { 56 * bar - step, sweep(-1.0f) } },
     });
 
     song.left = 0;

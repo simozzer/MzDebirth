@@ -9,6 +9,7 @@
 #include "KeyPanel.h"
 #include "MonoRack.h"
 #include "FmRack.h"
+#include "JunoRack.h"
 #include "SamplerRack.h"
 #include "Processor.h"
 
@@ -85,8 +86,9 @@ private:
     DrumRack mz808, mz909;
     SamplerRack mz950;
     FmRack mz7;
+    JunoRack mz106;
 
-    std::vector<juce::Component*> units() { return { &mz303, &mz101, &mz808, &mz909, &mz950, &mz7 }; }
+    std::vector<juce::Component*> units() { return { &mz303, &mz101, &mz808, &mz909, &mz950, &mz7, &mz106 }; }
 };
 
 //

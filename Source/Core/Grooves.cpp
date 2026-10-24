@@ -432,6 +432,9 @@ std::vector<std::string> writeGrooves(Rack& rack)
     rack.channel[Rack::M7].level = 0.8f;
     rack.channel[Rack::M7].pan = -0.2f;
     rack.channel[Rack::M7].delay = 0.15f;
+    rack.channel[Rack::M106].level = 0.7f;
+    rack.channel[Rack::M106].pan = 0.2f;
+    rack.channel[Rack::M106].delay = 0.3f;
     rack.master = 1.0f;
 
     // the 303 through the DIST, as it always was, echoes on the leads, and the 808 squeezed
@@ -855,12 +858,13 @@ void transposeBank(Rack& rack, int bank, Key from, Key to)
         }
     }
 
-    // the Mz7's notes, always tuned
+    // the Mz7's and the Mz106's notes, always tuned
+    for (auto* track : { &rack.mz7.track, &rack.mz106.track })
     {
         const int fromTonic = 60 + tonicOffset(from);
         for (int n = 0; n < patternsPerBank; ++n)
         {
-            auto& p = rack.mz7.track.patterns[bank * patternsPerBank + n];
+            auto& p = track->patterns[bank * patternsPerBank + n];
             uint32_t moved[NotePattern::notes] {};
             for (int note = 0; note < NotePattern::notes; ++note)
             {
@@ -957,6 +961,25 @@ void generateBank(Rack& rack, int bank, Key k, int style, unsigned seed)
                     if (h[s] != 'x' && ! pad) continue;
                     for (int n : notes) q.set(n, s, true);
                     if (h[s] != 'x') q.set(NotePattern::tieRow, s, true);
+                }
+            }
+        }
+
+        // the Mz106 arpeggiates the slot's chord over two octaves from middle C, as its own
+        // arpeggiator would - sixteenths, eighths in Deep, every other eighth in the breakdown,
+        // nothing in a fill
+        {
+            auto& q = rack.mz106.track.patterns[index];
+            q.clear();
+            if (role != Role::Fill)
+            {
+                const int home = 60 - ((60 - k.root()) % 12 + 12) % 12;
+                const int every = role == Role::Breakdown ? 4 : style == Style::Deep ? 2 : 1;
+                for (int s = 0, i = 0; s < stepsPerPattern; s += every, ++i)
+                {
+                    const int up = i % 6;                       // up through the chord twice
+                    const int n = home + 12 * (up / 3) + degree(k, chord + 2 * (up % 3));
+                    q.set(std::clamp(n, 0, NotePattern::notes - 1), s, true);
                 }
             }
         }

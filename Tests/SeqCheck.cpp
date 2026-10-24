@@ -1580,6 +1580,7 @@ void demo()
 #endif
     r.prepare(48000, 512);
     writeGrooves(r);
+    voiceForAcid(r);
     if (kit) { r.mz950.selectProgram(0); writeSamplerGrooves(r.mz950); r.mz950.service(); }
     r.tempo = demoTempo;
     r.mode = Mode::Song;
@@ -1701,6 +1702,9 @@ void ambientDemo()
     const auto fm = r.mz7.programNames();
     check(r.mz7.program() >= 0 && r.mz7.program() < (int) fm.size() && fm[(size_t) r.mz7.program()] == "WARM PAD",
           "the Mz7 is on WARM PAD");
+    const auto junoNames = r.mz106.programNames();
+    check(r.mz106.program() >= 0 && junoNames[(size_t) r.mz106.program()].find("SEQ PLUCK") != std::string::npos,
+          "the Mz106 is on SEQ PLUCK", junoNames[(size_t) std::max(0, r.mz106.program())]);
 #ifdef MZ950_DISKS
     check(whales, "the 950 has the WHALES disk in, on WHALE SEA");
 #endif
@@ -1710,9 +1714,10 @@ void ambientDemo()
     for (size_t i = 0; inOrder && i < s.tracks.size(); ++i) inOrder = s.tracks[i].machine == (int) i;
     const bool drumsQuiet = s.tracks[Rack::M808].parts.empty() && s.tracks[Rack::M909].parts.empty();
     const bool playing = ! s.tracks[Rack::M7].parts.empty() && ! s.tracks[Rack::M101].parts.empty()
+                      && ! s.tracks[Rack::M106].parts.empty()
                       && ! s.tracks[Rack::M303].parts.empty() && (s.tracks[Rack::M950].parts.empty() != whales);
     check(inOrder && drumsQuiet && playing && s.end() == 64 * ticksPerBar,
-          "sixty-four bars: the sea and whales, the pad, the melody and the pulse, and no drums",
+          "sixty-four bars: the sea and whales, the pad, the melody, the pulse and the arpeggio, and no drums",
           fmt("%zu tracks, %d bars", s.tracks.size(), s.end() / ticksPerBar));
 
     std::vector<float> settings[Rack::owners];

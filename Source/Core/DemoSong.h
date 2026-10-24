@@ -21,8 +21,9 @@ class Rack;
 //    17   groove     the lead, and the 950's percussion
 //    25   BUILD      the kick drops away; a snare roll speeding up, a riser climbing;
 //                    a beat of silence
-//    29   DROP       everything, and a crash
-//    37   breakdown  no kick: the lead held long over the chords, the acid line thinned;
+//    29   DROP       everything, and a crash, the Mz106 arpeggiating the chords
+//    37   breakdown  no kick: the lead held long over the chords, the acid line thinned,
+//                    the arpeggio in eighths;
 //                    from 41 a long snare roll, starting almost silent
 //    45   BUILD      the roll louder and faster, the acid line an octave up, a kick roll
 //    49   DROP       twelve bars, two grooves turn about, a crash every eight
@@ -30,13 +31,16 @@ class Rack;
 //
 // with the knobs turned as it goes: the 303's filter opening as the acid comes in and through
 // each build, the 909's snare level bringing the rolls up, the 101's filter opening with each
-// riser, and its reverb sent up for the breakdown - each put back after.
+// riser, and its reverb sent up for the breakdown, the 106's filter closed for the breakdown
+// and opening into the second drop - each put back after.
 //
 // It needs bank A's factory grooves in the rack - writeGrooves(), and writeSamplerGrooves()
 // for the 950's. Without the 950's, its track is just left empty.
 //
 constexpr float demoTempo = 132.0f;
 
+// the voices it was written for: the Mz7 on E.PIANO 1, the Mz106 on ARP PULSE
+void voiceForAcid(Rack&);
 Song demoSong(Rack&);
 
 //
@@ -45,17 +49,19 @@ Song demoSong(Rack&);
 //
 //     1   the sea alone, and the first whales far off
 //     9   the Mz7's pad comes in: E flat, C minor, A flat, B flat, four bars each
+//    13   the Mz106's arpeggio drifts in, soft and echoing, its filter slowly sweeping
 //    17   the 101's slow melody, echoing, over the 303's soft low pulse
 //    33   the melody and the pulse rest: the pad, the sea and the whales
 //    41   the melody again, the other way about, the 303's filter breathing
-//    57   the last chord held, the whales going, the sea fading away
+//    57   the last chord held, the arpeggio gone, the whales going, the sea fading away
 //
 // No drums. The whales and the sea come from the Mz950's WHALES disk, its WHALE SEA
 // programme - the sea held on the keys above the whales the whole way through.
 //
 // voiceForAmbient() puts the voices in: the WHALES disk into the 950 from `whalesDisk`, unless
 // it is in already, on WHALE SEA, its patterns cleared - the factory ones are the drum disk's -
-// and the Mz7 on WARM PAD. It says whether the whales are in; with no disk, they aren't.
+// the Mz7 on WARM PAD and the Mz106 on SEQ PLUCK. It says whether the whales are in; with
+// no disk, they aren't.
 // dressForAmbient() then sets the knobs - the 101 and 303 voiced soft, the sends and the
 // effects long - and the song's automation is written against those settings. Without the
 // whales, the 950's track is left empty.

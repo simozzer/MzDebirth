@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(MzDebirth VERSION 0.14.0 LANGUAGES C CXX)
+project(MzDebirth VERSION 0.15.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -17,6 +17,7 @@ set(MZ808_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../Mz808" CACHE PATH "Where Mz808 is
 set(MZ909_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../Mz909" CACHE PATH "Where Mz909 is checked out")
 set(MZPCF_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../MzPCF" CACHE PATH "Where MzPCF is checked out")
 set(MZ7_PATH   "${CMAKE_CURRENT_SOURCE_DIR}/../Mz7"   CACHE PATH "Where Mz7 is checked out")
+set(MZ106_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../Mz106" CACHE PATH "Where Mz106 is checked out")
 
 # Mz950's repository may still be checked out under its old name.
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../Mz950")
@@ -34,7 +35,7 @@ if(NOT EXISTS "${JUCE_PATH}/CMakeLists.txt")
         "or pass -DJUCE_PATH=<wherever it is>.")
 endif()
 
-foreach(machine MZ101 MZ303 MZ808 MZ909 MZ7 MZPCF)
+foreach(machine MZ101 MZ303 MZ808 MZ909 MZ7 MZ106 MZPCF)
     if(NOT EXISTS "${${machine}_PATH}/Source")
         message(FATAL_ERROR "No ${machine} at ${${machine}_PATH} - clone it beside this repository, "
                             "or pass -D${machine}_PATH=<wherever it is>.")
@@ -63,6 +64,7 @@ set(CORE_SOURCES
     Source/Core/DemoSong.cpp
     Source/Core/Effects.cpp
     Source/Core/Fm.cpp
+    Source/Core/Juno.cpp
     Source/Core/Grooves.cpp
     Source/Core/Key.cpp
     Source/Core/Rack.cpp
@@ -81,6 +83,9 @@ set(CORE_SOURCES
     "${MZ7_PATH}/Source/DX7/Engine.cpp"
     "${MZ7_PATH}/Source/DX7/Patch.cpp"
     "${MZ7_PATH}/Source/DX7/Banks.cpp"
+    "${MZ106_PATH}/Source/J106/Engine.cpp"
+    "${MZ106_PATH}/Source/J106/Patch.cpp"
+    "${MZ106_PATH}/Source/J106/Banks.cpp"
     "${MZPCF_PATH}/Source/PCF/Pcf.cpp")
 
 set(CORE_INCLUDES
@@ -91,6 +96,7 @@ set(CORE_INCLUDES
     "${MZ909_PATH}/Source"
     "${MZ950_PATH}/Plugin/Source"
     "${MZ7_PATH}/Source"
+    "${MZ106_PATH}/Source"
     "${MZPCF_PATH}/Source")
 
 # The sample disks that come with Mz950, for the rack to open with and the check to play.
@@ -134,6 +140,7 @@ target_sources(MzDebirth PRIVATE
     Source/UI/KeyPanel.cpp
     Source/UI/SamplerRack.cpp
     Source/UI/FmRack.cpp
+    Source/UI/JunoRack.cpp
     Source/UI/MainPanel.cpp
     Source/UI/Arrange/ArrangeState.cpp
     Source/UI/Arrange/ArrangeTransport.cpp

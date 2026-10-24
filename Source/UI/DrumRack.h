@@ -9,7 +9,7 @@
 // A drum machine's strip: its knobs in a column per instrument, as on the hardware, then
 // the instrument select and the sixteen step keys - pick an instrument, or AC for the
 // accents, and the keys show and set its steps. An instrument with steps written has a
-// bright edge.
+// bright edge. The knobs fold away, for once the sounds are set: the steps stay.
 //
 class DrumRack final : public juce::Component
 {
@@ -55,6 +55,10 @@ public:
     void follow();   // the knobs and switches read back, as the song's automation moves them
     int preferredHeight() const;
 
+    void setFolded(bool);
+    bool isFolded() const { return ! fold.isOpen(); }
+    std::function<void()> onFold;
+
     void paint(juce::Graphics&) override;
     void resized() override;
 
@@ -83,6 +87,7 @@ private:
     std::vector<std::unique_ptr<juce::Component>> controls;
     std::vector<Column> columns;
     int maxKnobs = 1;
+    FoldBar fold;
 
     std::vector<VoiceSpec> voiceList;
     std::vector<std::unique_ptr<Pad>> voices;   // AC first, then the instruments
