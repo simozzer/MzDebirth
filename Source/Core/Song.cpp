@@ -12,7 +12,7 @@ namespace debirth
 
 int machineKind(int machine)
 {
-    switch (machine)
+    switch (Rack::typeOf(machine))
     {
         case Rack::M303: case Rack::M101: return MachineKind::Mono;
         case Rack::M808: case Rack::M909: return MachineKind::Drums;
@@ -20,9 +20,16 @@ int machineKind(int machine)
     }
 }
 
+bool takesPatches(int machine)
+{
+    const int t = Rack::typeOf(machine);
+    return t == Rack::M950 || t == Rack::M7 || t == Rack::M106;
+}
+
 const char* machineName(int machine)
 {
-    static const char* const names[Rack::channels] = { "Mz303", "Mz101", "Mz808", "Mz909", "Mz950", "Mz7", "Mz106" };
+    static const char* const names[Rack::channels] = { "Mz303", "Mz101", "Mz808", "Mz909", "Mz950", "Mz7", "Mz106",
+                                                       "Mz303 2", "Mz101 2", "Mz808 2", "Mz909 2", "Mz950 2", "Mz7 2", "Mz106 2" };
     return names[std::clamp(machine, 0, Rack::channels - 1)];
 }
 
@@ -111,17 +118,17 @@ namespace
     // machines answer MIDI with.
     int drumNote(int machine, int voice)
     {
-        return machine == Rack::M808 ? tr808::voiceInfo(voice).note : tr909::voiceInfo(voice).note;
+        return Rack::typeOf(machine) == Rack::M808 ? tr808::voiceInfo(voice).note : tr909::voiceInfo(voice).note;
     }
 
     int drumVoice(int machine, int note)
     {
-        return machine == Rack::M808 ? tr808::voiceForNote(note) : tr909::voiceForNote(note);
+        return Rack::typeOf(machine) == Rack::M808 ? tr808::voiceForNote(note) : tr909::voiceForNote(note);
     }
 
     int drumVoices(int machine)
     {
-        return machine == Rack::M808 ? Mz808::voices : Mz909::voices;
+        return Rack::typeOf(machine) == Rack::M808 ? Mz808::voices : Mz909::voices;
     }
 
     constexpr int plain = 100, accented = 127;
@@ -218,16 +225,13 @@ Part partFromPattern(Rack& rack, int machine, int pattern, int repeats)
     part.name = std::string(1, (char) ('A' + pattern / patternsPerBank)) + std::to_string(pattern % patternsPerBank + 1);
     part.length = rack.track(machine).pattern(pattern).len() * repeats * ticksPerStep;
 
-    switch (machine)
+    rack.visit(machine, [&] (auto& x)
     {
-        case Rack::M303: monoNotes(part, rack.mz303, pattern, repeats); break;
-        case Rack::M101: monoNotes(part, rack.mz101, pattern, repeats); break;
-        case Rack::M808: drumNotes(part, rack.mz808, machine, pattern, repeats); break;
-        case Rack::M909: drumNotes(part, rack.mz909, machine, pattern, repeats); break;
-        case Rack::M950: samplerNotes(part, rack.mz950.track, pattern, repeats); break;
-        case Rack::M7:   samplerNotes(part, rack.mz7.track, pattern, repeats); break;
-        default:         samplerNotes(part, rack.mz106.track, pattern, repeats); break;
-    }
+        using T = std::decay_t<decltype(x)>;
+        if constexpr (isMono<T>)       monoNotes(part, x, pattern, repeats);
+        else if constexpr (isDrums<T>) drumNotes(part, x, machine, pattern, repeats);
+        else                           samplerNotes(part, x.track, pattern, repeats);
+    });
 
     part.sortNotes();
     return part;
@@ -372,9 +376,27 @@ Playback compile(const Song& song, const Rack* rack)
         if (t.machine < 0 || t.machine >= Rack::channels) continue;
         const int kind = machineKind(t.machine);
 
+        // A track whose parts choose their patches changes patch at the start of every part,
+        // its own or back to the panel's, so a part plays on the same patch however it is
+        // come to. One whose parts don't is left on whatever the panel has.
+        bool patches = false;
+        if (takesPatches(t.machine))
+            for (const auto& part : t.parts) patches |= part.program >= 0;
+
         for (const auto& part : t.parts)
         {
             if (part.muted) continue;
+
+            if (patches)
+            {
+                SongEvent e {};
+                e.tick = e.endTick = part.start;
+                e.machine = (int16_t) t.machine;
+                e.key = (int16_t) std::max(-1, part.program);
+                e.shuffle = t.shuffle;
+                e.program = true;
+                out.events.push_back(e);
+            }
 
             for (const auto& n : part.notes)
             {
@@ -398,6 +420,7 @@ Playback compile(const Song& song, const Rack* rack)
     std::stable_sort(out.events.begin(), out.events.end(), [] (const SongEvent& a, const SongEvent& b)
     {
         if (a.tick != b.tick) return a.tick < b.tick;
+        if (a.program != b.program) return a.program;   // a patch changes before its notes start
         if (a.machine != b.machine) return a.machine < b.machine;
         return a.key < b.key;
     });
@@ -408,7 +431,7 @@ Playback compile(const Song& song, const Rack* rack)
     std::fill(std::begin(lastEnd), std::end(lastEnd), -1);
     for (auto& e : out.events)
     {
-        if (machineKind(e.machine) != MachineKind::Mono) continue;
+        if (machineKind(e.machine) != MachineKind::Mono || e.program) continue;
         e.slide = lastEnd[e.machine] > e.tick;
         lastEnd[e.machine] = e.endTick;
     }
@@ -431,6 +454,17 @@ Playback compile(const Song& song, const Rack* rack)
     }
 
     return out;
+}
+
+int Playback::programAt(int machine, int tick) const
+{
+    int at = -2;
+    for (const auto& e : events)
+    {
+        if (e.tick > tick) break;
+        if (e.program && e.machine == machine) at = e.key;
+    }
+    return at;
 }
 
 //============================================================================== SongDocument

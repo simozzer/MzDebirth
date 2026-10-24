@@ -311,6 +311,13 @@ namespace
                  juce::Colour(0xffe0562c), juce::Colour(0xff151515), juce::Colour(0xffd23a2a) };
     }
 
+    // a machine's second, as its first looks, its name numbered
+    Theme second(Theme t)
+    {
+        t.name << " 2";
+        return t;
+    }
+
     std::vector<MonoRack::Row> layout303() { return { { { "", 8 } } }; }
 
     std::vector<MonoRack::Row> layout101()
@@ -403,23 +410,60 @@ RackView::RackView(DebirthProcessor& p)
             theme909(), layout909(), voicesOf(tr909::Voice::count, tr909::voiceInfo), palette909()),
       mz950(p.rack.mz950, p.rack.channel[Rack::M950], [&p] { return p.rack.playing.load(); }, theme950()),
       mz7(p.rack.mz7, p.rack.channel[Rack::M7], [&p] { return p.rack.playing.load(); }, theme7()),
-      mz106(p.rack.mz106, p.rack.channel[Rack::M106], [&p] { return p.rack.playing.load(); }, theme106())
+      mz106(p.rack.mz106, p.rack.channel[Rack::M106], [&p] { return p.rack.playing.load(); }, theme106()),
+      mz303b(p.rack.mz303b, p.rack.channel[Rack::M303 + Rack::types], [&p] { return p.rack.playing.load(); },
+             second(theme303()), layout303(), true),
+      mz101b(p.rack.mz101b, p.rack.channel[Rack::M101 + Rack::types], [&p] { return p.rack.playing.load(); },
+             second(theme101()), layout101(), false),
+      mz808b(p.rack.mz808b, p.rack.channel[Rack::M808 + Rack::types], [&p] { return p.rack.playing.load(); },
+             second(theme808()), layout808(), voicesOf(tr808::Voice::count, tr808::voiceInfo), palette808()),
+      mz909b(p.rack.mz909b, p.rack.channel[Rack::M909 + Rack::types], [&p] { return p.rack.playing.load(); },
+             second(theme909()), layout909(), voicesOf(tr909::Voice::count, tr909::voiceInfo), palette909()),
+      mz950b(p.rack.mz950b, p.rack.channel[Rack::M950 + Rack::types], [&p] { return p.rack.playing.load(); }, second(theme950())),
+      mz7b(p.rack.mz7b, p.rack.channel[Rack::M7 + Rack::types], [&p] { return p.rack.playing.load(); }, second(theme7())),
+      mz106b(p.rack.mz106b, p.rack.channel[Rack::M106 + Rack::types], [&p] { return p.rack.playing.load(); }, second(theme106()))
 {
     for (auto* u : units()) addAndMakeVisible(u);
 
     // the melodic machines' step rolls fold away, and the drum machines' knobs
-    mz303.onFold = mz101.onFold = mz808.onFold = mz909.onFold = mz950.onFold = mz7.onFold = mz106.onFold = [this] { folded(); };
+    eachUnit([this] (auto& u, int) { u.onFold = [this] { folded(); }; });
+
+    // a × on each, over its face, to take it out
+    for (int m = 0; m < Rack::channels; ++m)
+    {
+        removers[m].setTooltip(juce::String("Take the ") + machineName(m) + " out of the rack. Its patterns and knobs "
+                               "are kept: + MACHINE puts it back as it was.");
+        removers[m].onPress = [this, m] { remove(m); };
+        addChildComponent(removers[m]);
+    }
+}
+
+void RemoveButton::paint(juce::Graphics& g)
+{
+    const auto r = getLocalBounds().toFloat().reduced(1.0f);
+    const bool over = isMouseOver();
+    g.setColour(juce::Colours::black.withAlpha(over ? 0.55f : 0.3f));
+    g.fillEllipse(r);
+    g.setColour(over ? colours::ledRed : colours::light.withAlpha(0.8f));
+    const auto x = r.reduced(r.getWidth() * 0.3f);
+    g.drawLine(x.getX(), x.getY(), x.getRight(), x.getBottom(), 1.6f);
+    g.drawLine(x.getRight(), x.getY(), x.getX(), x.getBottom(), 1.6f);
+}
+
+void RackView::remove(int machine)
+{
+    int in = 0;
+    for (int m = 0; m < Rack::channels; ++m) in += processor.rack.channel[m].inRack.load() ? 1 : 0;
+    if (in <= 1) return;   // the last one stays
+
+    processor.rack.channel[machine].inRack = false;
+    refresh();
+    if (onMachinesChanged) onMachinesChanged();
 }
 
 void RackView::folded()
 {
-    processor.folded[Rack::M303] = mz303.isFolded();
-    processor.folded[Rack::M101] = mz101.isFolded();
-    processor.folded[Rack::M808] = mz808.isFolded();
-    processor.folded[Rack::M909] = mz909.isFolded();
-    processor.folded[Rack::M950] = mz950.isFolded();
-    processor.folded[Rack::M7] = mz7.isFolded();
-    processor.folded[Rack::M106] = mz106.isFolded();
+    eachUnit([this] (auto& u, int m) { processor.folded[(size_t) m] = u.isFolded(); });
     if (onHeightChanged) onHeightChanged();
 }
 
@@ -447,64 +491,62 @@ void RackView::paintOverChildren(juce::Graphics& g)
 
 int RackView::preferredHeight() const
 {
-    return gap + mz303.preferredHeight() + gap + mz101.preferredHeight() + gap + mz808.preferredHeight()
-         + gap + mz909.preferredHeight() + gap + mz950.preferredHeight() + gap + mz7.preferredHeight() + gap + mz106.preferredHeight() + gap;
+    // the machines in the rack, each with a gap under it
+    int h = gap;
+    eachUnit([this, &h] (const auto& u, int m)
+    {
+        if (processor.rack.channel[m].inRack.load()) h += u.preferredHeight() + gap;
+    });
+    return h;
 }
 
 void RackView::tick(bool blinkPhase)
 {
-    mz303.tick(blinkPhase);
-    mz101.tick(blinkPhase);
-    mz808.tick(blinkPhase);
-    mz909.tick(blinkPhase);
-    mz950.tick(blinkPhase);
-    mz7.tick(blinkPhase);
-    mz106.tick(blinkPhase);
-
+    eachUnit([this, blinkPhase] (auto& u, int m) { if (processor.rack.channel[m].inRack.load()) u.tick(blinkPhase); });
     if (flashTicks > 0 && --flashTicks >= 0) repaint();
 }
 
 void RackView::follow()
 {
-    mz303.follow();
-    mz101.follow();
-    mz808.follow();
-    mz909.follow();
-    mz950.follow();
-    mz7.follow();
-    mz106.follow();
+    eachUnit([this] (auto& u, int m) { if (processor.rack.channel[m].inRack.load()) u.follow(); });
 }
 
 void RackView::refresh()
 {
-    mz303.refresh();
-    mz101.refresh();
-    mz808.refresh();
-    mz909.refresh();
-    mz950.refresh();
-    mz7.refresh();
-    mz106.refresh();
-
-    mz303.setFolded(processor.folded[Rack::M303]);
-    mz101.setFolded(processor.folded[Rack::M101]);
-    mz808.setFolded(processor.folded[Rack::M808]);
-    mz909.setFolded(processor.folded[Rack::M909]);
-    mz950.setFolded(processor.folded[Rack::M950]);
-    mz7.setFolded(processor.folded[Rack::M7]);
-    mz106.setFolded(processor.folded[Rack::M106]);
+    eachUnit([this] (auto& u, int m)
+    {
+        u.refresh();
+        u.setFolded(processor.folded[(size_t) m]);
+        u.setVisible(processor.rack.channel[m].inRack.load());   // only the machines in the rack
+    });
+    resized();
 }
 
 void RackView::resized()
 {
+    // in the rack's order, each machine's second under its first
+    int heights[Rack::channels] {};
+    eachUnit([&heights] (auto& u, int m) { heights[m] = u.preferredHeight(); });
+
+    int in = 0;
+    for (int m = 0; m < Rack::channels; ++m) in += processor.rack.channel[m].inRack.load() ? 1 : 0;
+
     auto r = getLocalBounds();
     r.removeFromTop(gap);
-    const int heights[] = { mz303.preferredHeight(), mz101.preferredHeight(), mz808.preferredHeight(),
-                            mz909.preferredHeight(), mz950.preferredHeight(), mz7.preferredHeight(), mz106.preferredHeight() };
-    int i = 0;
-    for (auto* u : units())
+    const auto all = units();
+    for (int i = 0; i < Rack::channels; ++i)
     {
-        u->setBounds(r.removeFromTop(heights[i++]));
+        const int m = Rack::inOrder(i);
+        const bool shown = processor.rack.channel[m].inRack.load();
+        removers[m].setVisible(shown && in > 1);   // the last one can't be taken out
+        if (! shown) continue;                     // out of the rack
+        const auto unit = r.removeFromTop(heights[m]);
+        all[(size_t) m]->setBounds(unit);
         r.removeFromTop(gap);
+
+        // the ×: the top right of the face, clear of the mixer strip beside it
+        removers[m].setBounds(unit.getRight() - 84 - 6 - 26, unit.getY() + 6, 20, 20);
+        removers[m].toFront(false);
     }
 }
 
@@ -544,9 +586,45 @@ MainPanel::MainPanel(DebirthProcessor& p)
             if (choice == cancel) return;
             processor.rack.playing = false;
             processor.startAfresh(choice == acid ? Fresh::AcidDemo : choice == ambient ? Fresh::AmbientDemo : Fresh::Empty);
+            processor.rackFile = juce::File();   // a new rack, not saved anywhere yet
         }), true);
     };
+    machines.setTooltip("Add a machine to the rack - or a second of one already in. The × on a machine's panel "
+                        "takes it out again; one left out costs no CPU.");
+    machines.setShowsLed(false);
+    addAndMakeVisible(machines);
+    machines.onPress = [this]
+    {
+        // the seven kinds: picking one puts in its first, or its second if the first is in
+        static const char* const what[Rack::types] = { "bass line", "synthesizer", "rhythm composer", "rhythm composer",
+                                                       "sampler", "digital FM synthesizer", "polyphonic synthesizer" };
+        juce::PopupMenu m;
+        m.addSectionHeader("Add to the rack");
+        for (int t = 0; t < Rack::types; ++t)
+        {
+            const bool first = processor.rack.channel[t].inRack.load();
+            const bool second = processor.rack.channel[t + Rack::types].inRack.load();
+            const juce::String name = juce::String(machineName(t)) + "  -  " + what[t];
+            m.addItem(t + 1, first && ! second ? name + "  (a second)" : name, ! (first && second));
+        }
+        juce::Component::SafePointer<MainPanel> safe(this);
+        m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&machines),
+            [safe] (int id)
+            {
+                if (safe == nullptr || id < 1 || id > Rack::types) return;
+                const int t = id - 1;
+                auto& ch = safe->processor.rack.channel;
+                const int slot = ! ch[t].inRack.load() ? t : t + Rack::types;
+                ch[slot].inRack = true;
+                safe->rack.refresh();
+                safe->resized();
+                safe->arrangeView.refresh();
+                safe->showMachine(slot);   // there it is
+            });
+    };
+    rack.onMachinesChanged = [this] { resized(); arrangeView.refresh(); };
     transport.onLoad = [this] { loadFile(); };
+    processor.onCloseRequested = [this] (std::function<void(bool)> quit) { askToSave(std::move(quit)); };
     transport.onSave = [this] { saveFile(); };
     addAndMakeVisible(transport);
     addAndMakeVisible(effects);
@@ -628,6 +706,7 @@ void MainPanel::showMachine(int machine)
 
 MainPanel::~MainPanel()
 {
+    processor.onCloseRequested = nullptr;
     PatternPanel::songPlaying = nullptr;
     ControlHooks::moved = nullptr;
     ControlHooks::held = nullptr;
@@ -716,21 +795,61 @@ static juce::File racksFolder()
     return f;
 }
 
-void MainPanel::saveFile()
+// the rack to a file, which is then the rack's; false, and said so, if it couldn't be written
+bool MainPanel::writeRack(const juce::File& file)
 {
-    chooser = std::make_unique<juce::FileChooser>("Save the rack", racksFolder(), juce::String("*") + fileSuffix);
+    if (auto xml = processor.save().createXml(); xml == nullptr || ! xml->writeTo(file))
+    {
+        juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon, "Not saved",
+                                               "Could not write " + file.getFullPathName());
+        return false;
+    }
+    processor.rackFile = file;
+    processor.markSaved();
+    return true;
+}
+
+// SAVE: always asks where, so it is SAVE AS too. done, if given, hears whether it was saved.
+void MainPanel::saveFile(std::function<void(bool)> done)
+{
+    const auto start = processor.rackFile != juce::File() ? processor.rackFile : racksFolder();
+    chooser = std::make_unique<juce::FileChooser>("Save the rack", start, juce::String("*") + fileSuffix);
     chooser->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
                              | juce::FileBrowserComponent::warnAboutOverwriting,
-        [this] (const juce::FileChooser& fc)
+        [this, done] (const juce::FileChooser& fc)
         {
             auto file = fc.getResult();
-            if (file == juce::File()) return;
-            file = file.withFileExtension(fileSuffix);
-
-            if (auto xml = processor.save().createXml(); xml == nullptr || ! xml->writeTo(file))
-                juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon, "Not saved",
-                                                       "Could not write " + file.getFullPathName());
+            const bool saved = file != juce::File() && writeRack(file.withFileExtension(fileSuffix));
+            if (done) done(saved);
         });
+}
+
+//
+// The window closing. Nothing changed since the rack was saved, loaded or started afresh: it
+// just closes. Otherwise it asks - SAVE, to the rack's own file if it has one, or where you
+// say; DON'T SAVE, and next time it opens as it was last saved; or CANCEL, and it stays open.
+//
+void MainPanel::askToSave(std::function<void(bool keep)> quit)
+{
+    if (! processor.hasUnsavedChanges()) { quit(true); return; }
+
+    const auto name = processor.rackFile != juce::File() ? processor.rackFile.getFileNameWithoutExtension() : juce::String("the rack");
+    juce::Component::SafePointer<MainPanel> safe(this);
+    juce::AlertWindow::showYesNoCancelBox(juce::MessageBoxIconType::QuestionIcon, "Save before closing?",
+        "There are changes to " + name + " that haven't been saved. Save them before closing?",
+        "Save", "Don't save", "Cancel", this,
+        juce::ModalCallbackFunction::create([safe, quit] (int choice)
+        {
+            if (safe == nullptr || choice == 0) return;              // CANCEL: stay open
+            if (choice == 2) { quit(false); return; }                // DON'T SAVE
+            auto& p = safe->processor;
+            if (p.rackFile.existsAsFile())
+            {
+                if (safe->writeRack(p.rackFile)) quit(true);
+                return;
+            }
+            safe->saveFile([quit] (bool saved) { if (saved) quit(true); });   // where, the first time
+        }));
 }
 
 namespace
@@ -748,8 +867,10 @@ namespace
         {
             copy = std::make_unique<DebirthProcessor>();
             copy->load(from.save());
+            copy->prepareSongPatches();
             copy->prepareToPlay(rate, 512);
-            copy->rack.mz950.service();   // the sampler's programme, handed over
+            copy->rack.mz950.service();   // the samplers' programmes, handed over
+            copy->rack.mz950b.service();
         }
 
         void run() override
@@ -832,6 +953,7 @@ void MainPanel::loadFile()
                 return;
             }
             processor.load(tree);
+            processor.rackFile = file;
         });
 }
 
@@ -848,6 +970,8 @@ void MainPanel::resized()
     rackTab.setBounds(tabs.removeFromLeft(110));
     tabs.removeFromLeft(4);
     arrangeTab.setBounds(tabs.removeFromLeft(110));
+    tabs.removeFromLeft(4);
+    machines.setBounds(tabs.removeFromLeft(110));
     songMode.setBounds(tabs.removeFromRight(120));
     tabs.removeFromRight(6);
     songPosition.setBounds(tabs.removeFromRight(130));

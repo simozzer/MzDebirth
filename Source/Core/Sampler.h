@@ -47,8 +47,14 @@ const std::vector<Control<SamplerSettings>>& controls950();
 // through its own two-slot exchange, which can refuse while the audio thread has not taken
 // the last one - so service() is called on a timer and keeps trying, and collects the patch
 // the engine has finished with. The engine itself is built in prepare(), since it works out
-// every voice's constants from the sample rate; a lock keeps that and service() apart, and
-// is never taken by the audio thread.
+// every voice's constants from the sample rate; a lock keeps that and service() apart. The
+// audio thread only ever tries it, for a song's programme change, and makes the change a
+// block later if it can't have it.
+//
+// A SONG'S PROGRAMME CHANGES land on the beat, so they are made on the audio thread, from
+// patches built ahead on the message thread - prepareProgram(), for each the song uses. Every
+// patch the engine is given is kept in `built` until the disk changes, and then a while
+// longer, so the engine letting one go never frees it on the audio thread.
 //
 class Mz950
 {
@@ -81,6 +87,9 @@ public:
 
     void service();
 
+    // a programme built ahead, for a song's part to change to on the beat
+    void prepareProgram(int index);
+
     // ---------------------------------------------------------------- audio thread
 
     void prepare(double sampleRate);
@@ -99,9 +108,14 @@ public:
 
     int activeVoices() const { return engine != nullptr ? engine->getActiveVoices() : 0; }
 
+    // a part starting on a programme of its own, by number - -1 the one picked on the panel
+    void songProgram(int index);
+
 private:
     void releaseAll();
     const s950::Disk::Entry* entry(int index) const;
+    s950::PatchPtr build(int index);   // a programme's patch, from `built` or made and kept there
+    void trySongProgram();
 
     std::unique_ptr<s950::Disk> disk;
     std::string path;
@@ -109,7 +123,12 @@ private:
     s950::PatchPtr patch;
     bool sameDisk = false;   // the patch came off this disk, so its samples can be reused
 
-    std::mutex lock;   // prepare() against service(); never the audio thread
+    // every patch handed to the engine, by programme, and those of the last disk for a while
+    std::vector<s950::PatchPtr> built, graveyard;
+    int graveyardTicks = 0;
+    int wantProgram = -2;   // the audio thread's: a song's change not made yet
+
+    std::mutex lock;   // prepare() against service(); the audio thread only tries it
     std::unique_ptr<s950::Engine> engine;
     bool owed = false;
 

@@ -9,6 +9,7 @@
 #include "J106/Engine.h"
 #include "J106/Patch.h"
 
+#include <array>
 #include <atomic>
 #include <mutex>
 #include <string>
@@ -30,6 +31,7 @@ struct JunoSettings
     float attack  = 0.0f;   // -5 to +5: the envelope's A
     float release = 0.0f;   // -5 to +5: and R
     int   chorus  = 0;      // the patch's, or OFF, I or II
+    float morph   = 0.0f;   // 0 to 1: from the patch to the MORPH TO patch
     float volume  = 0.0f;   // -20 to +12 dB: a single-note line wants it up, a chord doesn't
 };
 
@@ -68,6 +70,11 @@ public:
     int  program() const { return programIndex; }
     bool selectProgram(int index);
 
+    // MORPH: a second patch the MORPH knob moves towards - its sliders step by step, its
+    // switches flipping half way. -1 for none.
+    int  morphTarget() const { return morphIndex; }
+    void setMorphTarget(int index);
+
     const j106::Bank& bank() const { return memory; }
     void setBank(const j106::Bank& b, const std::string& name);   // a saved rack's own
 
@@ -87,23 +94,43 @@ public:
 
     int activeVoices() const { return engine.activeVoices(); }
 
+    // a part starting on a patch of its own, by number - -1 the one picked on the panel. At
+    // once, so the part's first note plays on it.
+    void songProgram(int index);
+
 private:
     void releaseAll();
     void send(const j106::Patch&);
+    void sendBank();   // the bank's sounds, for the song's patch changes
+    void apply();      // the patch, with the knobs over it, to the engine
+
+    // a patch as the audio thread keeps it: its sliders and switches - no name, so copying
+    // one never allocates
+    struct Sound { std::array<uint8_t, 16> slider {}; uint8_t sw1 = 0, sw2 = 0; };
 
     j106::Bank memory;
     std::string path, name;
     bool factory = true;
     int programIndex = 0;
+    int morphIndex = -1;
 
     // the patch, handed to the audio thread
     std::mutex lock;
     j106::Patch pending;
     bool pendingNew = false;
+    std::array<Sound, 128> pendingBank;
+    bool pendingBankNew = false;
+    Sound pendingMorph;
+    bool pendingMorphOn = false, pendingMorphNew = false;
 
     // the audio thread's
     j106::Engine engine;
     j106::Patch patch;
+    j106::Patch homePatch;              // as the panel chose it
+    std::array<Sound, 128> audioBank;   // the bank, the audio thread's copy
+    JunoSettings knobsNow;              // the knobs as last read
+    Sound morphTo;                      // the MORPH TO patch
+    bool morphOn = false;
     bool held[NotePattern::notes] {};
     uint8_t songHeld[NotePattern::notes] {};
     const NotePattern* playing = nullptr;

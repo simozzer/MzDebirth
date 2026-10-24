@@ -25,7 +25,7 @@ namespace debirth
 class SongPlayer
 {
 public:
-    enum class Kind { On, Off };
+    enum class Kind { On, Off, Program };   // a note starting or ending, or a change of patch
 
     struct Due
     {
@@ -73,7 +73,7 @@ public:
                 const double t = timeOf(it->tick, it->shuffle, shuffle);
                 const int at = sampleOf(t);
                 if (at < 0 || at >= n) continue;
-                due[starts++] = { t, Kind::On, it->machine, it->key, it->velocity, it->slide };
+                due[starts++] = { t, it->program ? Kind::Program : Kind::On, it->machine, it->key, it->velocity, it->slide };
                 endsOf[starts - 1] = timeOf(it->endTick, it->shuffle, shuffle);
             }
         }
@@ -107,14 +107,15 @@ public:
             const Due& d = due[i];
 
             // A mono line's new note takes over from the one sounding, whose end is now its.
-            if (machineKind(d.machine) == MachineKind::Mono)
+            if (d.kind == Kind::On && machineKind(d.machine) == MachineKind::Mono)
                 for (int s = sounding - 1; s >= 0; --s)
                     if (playing[s].machine == d.machine) playing[s] = playing[--sounding];
 
             f(std::max(0, sampleOf(d.time)), d);
 
-            // A drum just rings; anything else is let go when it ends.
-            if (machineKind(d.machine) != MachineKind::Drums && sounding < maxSounding)
+            // A patch change is over as soon as it is made; a drum just rings; anything else is
+            // let go when it ends.
+            if (d.kind == Kind::On && machineKind(d.machine) != MachineKind::Drums && sounding < maxSounding)
                 playing[sounding++] = { endsOf[i], d.machine, d.key };
         }
     }

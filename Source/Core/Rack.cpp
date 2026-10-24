@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <type_traits>
 
 namespace debirth
 {
@@ -151,22 +152,23 @@ Rack::Rack()
     : mz303(controls303(), 36),   // C2
       mz101(controls101(), 48),   // C3, the 101's own middle
       mz808(controls808()),
-      mz909(controls909())
+      mz909(controls909()),
+      mz303b(controls303(), 36),
+      mz101b(controls101(), 48),
+      mz808b(controls808()),
+      mz909b(controls909())
 {
+    // the first of each in the rack, the seconds out until they're wanted
+    for (int m = 0; m < channels; ++m)
+    {
+        channel[m].inRack = copyOf(m) == 0;
+        wasInRack[m] = copyOf(m) == 0;
+    }
 }
 
 TrackBase& Rack::track(int machine)
 {
-    switch (machine)
-    {
-        case M303: return mz303.track;
-        case M101: return mz101.track;
-        case M808: return mz808.track;
-        case M909: return mz909.track;
-        case M950: return mz950.track;
-        case M7:   return mz7.track;
-        default:   return mz106.track;
-    }
+    return visit(machine, [] (auto& x) -> TrackBase& { return x.track; });
 }
 
 //============================================================================== the controls
@@ -191,17 +193,9 @@ namespace
     template <class F>
     auto withKnobs(Rack& r, int owner, F&& f)
     {
-        switch (owner)
-        {
-            case Rack::M303: return f(r.mz303.knobs);
-            case Rack::M101: return f(r.mz101.knobs);
-            case Rack::M808: return f(r.mz808.knobs);
-            case Rack::M909: return f(r.mz909.knobs);
-            case Rack::M950: return f(r.mz950.knobs);
-            case Rack::M7:   return f(r.mz7.knobs);
-            case Rack::M106: return f(r.mz106.knobs);
-            default:         return f(r.fx);
-        }
+        if (owner >= 0 && owner < Rack::channels)
+            return r.visit(owner, [&f] (auto& m) { return f(m.knobs); });
+        return f(r.fx);
     }
 }
 
@@ -342,27 +336,13 @@ void Rack::prepare(double sampleRate, int maxBlock)
 {
     blockSize = maxBlock > 0 ? maxBlock : 512;
     for (auto& b : buffers) b.assign((size_t) blockSize, 0.0f);
-    sampleRight.assign((size_t) blockSize, 0.0f);
-    junoRight.assign((size_t) blockSize, 0.0f);
+    for (auto& b : rights) b.assign((size_t) blockSize, 0.0f);
 
     clock.prepare(sampleRate);
     clock.stop();
 
-    mz303.prepare(sampleRate);
-    mz101.prepare(sampleRate);
-    mz808.prepare(sampleRate);
-    mz909.prepare(sampleRate);
-    mz950.prepare(sampleRate);
-    mz7.prepare(sampleRate);
-    mz106.prepare(sampleRate);
-
-    mz303.stop();
-    mz101.stop();
-    mz808.stop();
-    mz909.stop();
-    mz950.stop();
-    mz7.stop();
-    mz106.stop();
+    for (int m = 0; m < channels; ++m)
+        visit(m, [sampleRate] (auto& x) { x.prepare(sampleRate); x.stop(); });
 
     for (auto& in : inserts)
     {
@@ -419,25 +399,52 @@ void Rack::collect()
 
 void Rack::dispatch(const SongPlayer::Due& d)
 {
+    if (d.kind == SongPlayer::Kind::Program)
+    {
+        // a part starting on its own patch - even on a machine its STOP holds, so it is ready
+        if (d.machine >= 0 && d.machine < channels && channel[d.machine].inRack.load()) songProgram(d.machine, d.key);
+        return;
+    }
+
     const bool on = d.kind == SongPlayer::Kind::On;
     if (d.machine >= 0 && d.machine < channels)
     {
+        if (! channel[d.machine].inRack.load())
+            return;   // out of the rack: nothing reaches it
         if (on && channel[d.machine].stopped.load())
             return;   // its STOP holds it: the song's notes for it go by unplayed
         if (channel[d.machine].live.load())
             return;   // playing a pattern picked in the rack: nor do they reach it
     }
-    switch (d.machine)
+    if (d.machine < 0 || d.machine >= channels) return;
+    visit(d.machine, [&d, on] (auto& x)
     {
-        case M303: if (on) mz303.songNoteOn(d.key, d.velocity, d.slide); else mz303.songNoteOff(d.key); break;
-        case M101: if (on) mz101.songNoteOn(d.key, d.velocity, d.slide); else mz101.songNoteOff(d.key); break;
-        case M808: if (on) mz808.hit(d.key, d.velocity); break;
-        case M909: if (on) mz909.hit(d.key, d.velocity); break;
-        case M950: if (on) mz950.songNoteOn(d.key, d.velocity); else mz950.songNoteOff(d.key); break;
-        case M7:   if (on) mz7.songNoteOn(d.key, d.velocity); else mz7.songNoteOff(d.key); break;
-        case M106: if (on) mz106.songNoteOn(d.key, d.velocity); else mz106.songNoteOff(d.key); break;
-        default: break;
-    }
+        using T = std::decay_t<decltype(x)>;
+        if constexpr (isMono<T>)       { if (on) x.songNoteOn(d.key, d.velocity, d.slide); else x.songNoteOff(d.key); }
+        else if constexpr (isDrums<T>) { if (on) x.hit(d.key, d.velocity); }
+        else                           { if (on) x.songNoteOn(d.key, d.velocity); else x.songNoteOff(d.key); }
+    });
+}
+
+// A machine changing to a patch of its own number - -1 the one picked on its panel.
+void Rack::songProgram(int machine, int program)
+{
+    if (machine < 0 || machine >= channels) return;
+    visit(machine, [program] (auto& x)
+    {
+        using T = std::decay_t<decltype(x)>;
+        if constexpr (! isMono<T> && ! isDrums<T>) x.songProgram(program);
+    });
+}
+
+// The song started, or moved: each machine on the patch the song has it on there.
+void Rack::songProgramsAt(int tick)
+{
+    if (playback == nullptr) return;
+    for (int m = 0; m < channels; ++m)
+        if (takesPatches(m) && channel[m].inRack.load())
+            if (const int p = playback->programAt(m, tick); p >= -1)
+                songProgram(m, p);
 }
 
 // every machine but those whose STOP holds them
@@ -455,32 +462,22 @@ void Rack::stopMachines()
 
 void Rack::startMachine(int m)
 {
-    switch (m)
-    {
-        case M303: mz303.start(); break;
-        case M101: mz101.start(); break;
-        case M808: mz808.start(); break;
-        case M909: mz909.start(); break;
-        case M950: mz950.start(); break;
-        case M7:   mz7.start(); break;
-        case M106: mz106.start(); break;
-        default: break;
-    }
+    if (m >= 0 && m < channels) visit(m, [] (auto& x) { x.start(); });
 }
 
 void Rack::stopMachine(int m)
 {
-    switch (m)
+    if (m >= 0 && m < channels) visit(m, [] (auto& x) { x.stop(); });
+}
+
+// a step of the clock: a drum machine strikes on it; anything else strikes, or lets go half way
+void Rack::stepMachine(int m, bool isStep)
+{
+    visit(m, [isStep] (auto& x)
     {
-        case M303: mz303.stop(); break;
-        case M101: mz101.stop(); break;
-        case M808: mz808.stop(); break;
-        case M909: mz909.stop(); break;
-        case M950: mz950.stop(); break;
-        case M7:   mz7.stop(); break;
-        case M106: mz106.stop(); break;
-        default: break;
-    }
+        if constexpr (isDrums<std::decay_t<decltype(x)>>) { if (isStep) x.step(); }
+        else                                               { if (isStep) x.step(); else x.gateOff(); }
+    });
 }
 
 //
@@ -584,6 +581,7 @@ int Rack::beginBlock(int n)
             clock.start(fromCursor ? (double) playback->cursor / ticksPerStep : 0.0);
             startMachines();   // in SONG mode their patterns rest, but they start as they would
             player.forget();
+            if (fromCursor) songProgramsAt(playback->cursor);
         }
         else
         {
@@ -616,6 +614,7 @@ int Rack::beginBlock(int n)
     {
         clock.locate((double) to / ticksPerStep);
         player.releaseAll([this] (int, const SongPlayer::Due& d) { dispatch(d); });
+        songProgramsAt(to);
     }
 
     // A change of mode waits for the bar, as a new pattern does.
@@ -629,6 +628,7 @@ int Rack::beginBlock(int n)
             playingMode = wantedMode;
             stopMachines();
             if (playingMode == Mode::Pattern) startMachines();
+            if (playingMode == Mode::Song && playback != nullptr) songProgramsAt((int) (clock.position() * ticksPerStep));
             for (auto& ch : channel) ch.live = ch.liveWanted = false;   // into the song as written
         }
         else if (toBar < n)
@@ -664,6 +664,7 @@ void Rack::endBlock()
     {
         clock.locate((double) playback->left / ticksPerStep);
         player.releaseAll([this] (int, const SongPlayer::Due& d) { dispatch(d); });
+        songProgramsAt(playback->left);
     }
 
     songTick = clock.position() * ticksPerStep;
@@ -674,13 +675,18 @@ void Rack::renderMachines(int from, int to)
     const int n = to - from;
     if (n <= 0) return;
 
-    mz303.render(buffers[M303].data() + from, n);
-    mz101.render(buffers[M101].data() + from, n);
-    mz808.render(buffers[M808].data() + from, n);
-    mz909.render(buffers[M909].data() + from, n);
-    mz950.render(buffers[M950].data() + from, sampleRight.data() + from, n);
-    mz7.render(buffers[M7].data() + from, n);
-    mz106.render(buffers[M106].data() + from, junoRight.data() + from, n);
+    // a machine out of the rack costs nothing: its buffers are left silent
+    for (int m = 0; m < channels; ++m)
+    {
+        if (! channel[m].inRack.load(std::memory_order_relaxed)) continue;
+        float* l = buffers[m].data() + from;
+        float* r = rights[m].data() + from;
+        visit(m, [l, r, n] (auto& x)
+        {
+            if constexpr (isStereo<std::decay_t<decltype(x)>>) x.render(l, r, n);
+            else                                                x.render(l, n);
+        });
+    }
 }
 
 void Rack::renderBlock(float* left, float* right, int n)
@@ -688,13 +694,24 @@ void Rack::renderBlock(float* left, float* right, int n)
     const bool running = clock.isRunning();
     const bool song = running && playingMode == Mode::Song;
     const double quarters = clock.quarters(), bpm = clock.getTempo();
-    mz303.update(running, quarters, bpm);
-    mz101.update(running, quarters, bpm);
-    mz808.update();
-    mz909.update();
-    mz950.update(running, quarters, bpm);
-    mz7.update();
-    mz106.update();
+    for (int m = 0; m < channels; ++m)
+    {
+        if (! channel[m].inRack.load(std::memory_order_relaxed)) continue;
+        visit(m, [&] (auto& x)
+        {
+            using T = std::decay_t<decltype(x)>;
+            if constexpr (isMono<T> || std::is_same_v<T, Mz950>) x.update(running, quarters, bpm);
+            else                                                  x.update();
+        });
+    }
+
+    // a machine just taken out of the rack lets go of its notes, so none hang on its return
+    for (int m = 0; m < channels; ++m)
+    {
+        const bool in = channel[m].inRack.load();
+        if (! in && wasInRack[m]) stopMachine(m);
+        wasInRack[m] = in;
+    }
 
     int lane[channels];
     for (int m = 0; m < channels; ++m)
@@ -725,14 +742,9 @@ void Rack::renderBlock(float* left, float* right, int n)
             const bool isStep = e == Clock::Event::Step;
             if (isStep && l == 0 && step % stepsPerPattern == 0) applyStops();   // a bar begins
 
-            auto plays = [&] (int m) { return l == lane[m] && ! channel[m].stopped.load(); };
-            if (plays(M303)) { if (isStep) mz303.step(); else mz303.gateOff(); }
-            if (plays(M101)) { if (isStep) mz101.step(); else mz101.gateOff(); }
-            if (plays(M808) && isStep) mz808.step();
-            if (plays(M909) && isStep) mz909.step();
-            if (plays(M950)) { if (isStep) mz950.step(); else mz950.gateOff(); }
-            if (plays(M7))   { if (isStep) mz7.step(); else mz7.gateOff(); }
-            if (plays(M106)) { if (isStep) mz106.step(); else mz106.gateOff(); }
+            auto plays = [&] (int m) { return l == lane[m] && ! channel[m].stopped.load() && channel[m].inRack.load(); };
+            for (int m = 0; m < channels; ++m)
+                if (plays(m)) stepMachine(m, isStep);
 
             // recording: the clock's own step, so the take knows how far it ran with every
             // machine stopped, and each machine's that played
@@ -786,14 +798,9 @@ void Rack::renderBlock(float* left, float* right, int n)
             pos = at > pos ? at : pos;
 
             // a machine with a pattern picked in the rack plays it, as in PATTERN mode
-            auto plays = [&] (int m) { return l == lane[m] && channel[m].live.load() && ! channel[m].stopped.load(); };
-            if (plays(M303)) { if (isStep) mz303.step(); else mz303.gateOff(); }
-            if (plays(M101)) { if (isStep) mz101.step(); else mz101.gateOff(); }
-            if (plays(M808) && isStep) mz808.step();
-            if (plays(M909) && isStep) mz909.step();
-            if (plays(M950)) { if (isStep) mz950.step(); else mz950.gateOff(); }
-            if (plays(M7))   { if (isStep) mz7.step(); else mz7.gateOff(); }
-            if (plays(M106)) { if (isStep) mz106.step(); else mz106.gateOff(); }
+            auto plays = [&] (int m) { return l == lane[m] && channel[m].live.load() && ! channel[m].stopped.load() && channel[m].inRack.load(); };
+            for (int m = 0; m < channels; ++m)
+                if (plays(m)) stepMachine(m, isStep);
 
             // an overdub: what those machines play, at the song's own steps
             if (isStep && recording.load())
@@ -838,8 +845,9 @@ void Rack::renderBlock(float* left, float* right, int n)
     for (int c = 0; c < channels; ++c)
     {
         Channel& ch = channel[c];
+        if (! ch.inRack.load()) continue;   // not rendered, so not mixed
         float* srcL = buffers[c].data();
-        float* srcR = c == M950 ? sampleRight.data() : c == M106 ? junoRight.data() : nullptr;
+        float* srcR = visit(c, [] (auto& x) { return isStereo<std::decay_t<decltype(x)>>; }) ? rights[c].data() : nullptr;
 
         Inserts& in = inserts[c];
         if (ch.dist.load())

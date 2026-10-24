@@ -13,6 +13,7 @@
 #include "SongPlayer.h"
 
 #include <atomic>
+#include <type_traits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -32,6 +33,13 @@ namespace Mode { enum { Pattern, Song }; }
 //
 struct Channel
 {
+    //
+    // Whether the machine is in the rack at all: one left out has no panel, no track, no
+    // channel on the mixer, and costs nothing - it is not rendered. Most racks want only some
+    // of the seven. The panel sets it; the audio thread stops the machine when it goes.
+    //
+    std::atomic<bool> inRack { true };
+
     std::atomic<float> level { 0.7f };
     std::atomic<float> pan   { 0.0f };
     std::atomic<bool>  mute  { false };
@@ -66,15 +74,33 @@ struct Channel
     std::atomic<float> peakL { 0.0f }, peakR { 0.0f };
 };
 
+// what a machine is, by its type: each kind is played its own way
+template <class T> constexpr bool isMono   = std::is_same_v<T, Mz303> || std::is_same_v<T, Mz101>;
+template <class T> constexpr bool isDrums  = std::is_same_v<T, Mz808> || std::is_same_v<T, Mz909>;
+template <class T> constexpr bool isStereo = std::is_same_v<T, Mz950> || std::is_same_v<T, Mz106>;
+
 //
-// The whole rack: the clock, the seven machines on it, top to bottom, and the mixer they go
+// The whole rack: the clock, the machines on it, top to bottom, and the mixer they go
 // through. render() is called from the audio thread; the rest is the panel's, except where
 // a machine says otherwise.
 //
 class Rack
 {
 public:
-    enum { M303, M101, M808, M909, M950, M7, M106, channels };
+    //
+    // THE SLOTS. The kinds of machine, in rack order - and the rack's slots: the first of each
+    // kind, in that order, then a second of each. A slot's kind never changes - slot % types -
+    // so the second Mz303 is always slot M303 + types, and a song's track for it is always a
+    // mono line's. The first of each is where it always was; the seconds start out of the rack.
+    //
+    enum { M303, M101, M808, M909, M950, M7, M106, types };
+    static constexpr int copies = 2;
+    enum { channels = types * copies };
+    static constexpr int typeOf(int m) { return ((m % types) + types) % types; }
+    static constexpr int copyOf(int m) { return m / types; }
+
+    // the slots as the panels and the tracks show them: each machine's second under its first
+    static constexpr int inOrder(int i) { return i / copies + (i % copies) * types; }
 
     Rack();
     ~Rack();
@@ -117,6 +143,40 @@ public:
     Mz950 mz950;
     Mz7 mz7;
     Mz106 mz106;
+
+    // the second of each, slots M303 + types and on
+    Mz303 mz303b;
+    Mz101 mz101b;
+    Mz808 mz808b;
+    Mz909 mz909b;
+    Mz950 mz950b;
+    Mz7 mz7b;
+    Mz106 mz106b;
+
+    // f with the machine in slot m, as its own type
+    template <class F>
+    decltype(auto) visit(int m, F&& f)
+    {
+        switch (m)
+        {
+            case M303 + types: return f(mz303b);
+            case M101:         return f(mz101);
+            case M101 + types: return f(mz101b);
+            case M808:         return f(mz808);
+            case M808 + types: return f(mz808b);
+            case M909:         return f(mz909);
+            case M909 + types: return f(mz909b);
+            case M950:         return f(mz950);
+            case M950 + types: return f(mz950b);
+            case M7:           return f(mz7);
+            case M7 + types:   return f(mz7b);
+            case M106:         return f(mz106);
+            case M106 + types: return f(mz106b);
+            default:           return f(mz303);
+        }
+    }
+    template <class F>
+    decltype(auto) visit(int m, F&& f) const { return const_cast<Rack&>(*this).visit(m, std::forward<F>(f)); }
     Channel channel[channels];
 
     // the effects units' knobs
@@ -202,10 +262,13 @@ private:
     int beginBlock(int n);
     void endBlock();
     void dispatch(const SongPlayer::Due&);
+    void songProgram(int machine, int program);   // a part's patch, -1 the panel's
+    void songProgramsAt(int tick);                 // every machine's, as the song has them there
     void startMachines();
     void stopMachines();
-    void startMachine(int m);   // one machine, as startMachines and stopMachines do all five
+    void startMachine(int m);   // one machine, as startMachines and stopMachines do them all
     void stopMachine(int m);
+    void stepMachine(int m, bool isStep);   // a step, or the half way between, on one machine
     void applyStops();          // at the start of a bar: each machine's STOP, as wanted
     void applyLive();           // and in SONG mode, each machine's pattern or its track
     void applyAutomation();     // the song's automation, where the song is, once a block
@@ -219,8 +282,8 @@ private:
     double nudgeHeld = 0;
     int blockSize = 512;
     std::vector<float> buffers[channels];
-    std::vector<float> sampleRight;          // the sampler's right side; buffers[M950] is its left
-    std::vector<float> junoRight;            // the Mz106's, its chorus being stereo; buffers[M106] its left
+    std::vector<float> rights[channels];   // the right side of a stereo machine - a 950, a 106; buffers[] its left
+    bool wasInRack[channels] {};             // the audio thread's
     float gainL[channels] {}, gainR[channels] {}, masterGain = 0;
 
     // the effects: an insert of each per channel, sharing the units' knobs

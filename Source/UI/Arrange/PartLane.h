@@ -49,7 +49,7 @@ private:
 
     int rowAt(float y) const;
     void paintAutomation(juce::Graphics&, int row, int owner, const std::vector<debirth::AutoLane>&) const;
-    float rowY(int row) const { return (float) (row * trackHeight - state.scrollY); }
+    float rowY(int row) const { return (float) (state.slotOf(row) * trackHeight - state.scrollY); }
     juce::Rectangle<float> partBounds(int track, const debirth::Part&) const;
     bool partAt(juce::Point<float>, PartRef&) const;
     bool onRightEdge(juce::Point<float>, PartRef) const;

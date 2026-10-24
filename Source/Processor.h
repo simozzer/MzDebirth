@@ -50,6 +50,26 @@ public:
     enum class Fresh { Empty, AcidDemo, AmbientDemo };
     void startAfresh(Fresh);
 
+    //
+    // THE RACK'S FILE, and whether anything in it has changed since it was saved, loaded or
+    // started afresh - the song's cursor, the view and the folds aside, which are only where
+    // you are. Closing asks to save if it has; see onCloseRequested.
+    //
+    juce::File rackFile;
+    void markSaved();
+    bool hasUnsavedChanges() const;
+
+    // The app's window, closing: the panel asks to save, if there is anything to, then calls
+    // quit - keep says whether the rack as it stands is the one to reopen with next time.
+    std::function<void(std::function<void(bool keep)> quit)> onCloseRequested;
+    void prepareSongPatches();   // the Mz950 programmes the song's parts change to, built ahead
+
+private:
+    juce::String fingerprint() const;
+    juce::String savedPrint;
+
+public:
+
     // The KEY section: the bank it works on - the one the Mz303 shows - and its two buttons.
     int keyBank() const { return rack.mz303.track.selected.load() / debirth::patternsPerBank; }
     void generateInKey();

@@ -116,7 +116,10 @@ to a song of your own. If a button seems to do nothing, see
 - **NEW** brings the factory grooves back with a demo song - the **acid demo**, or the
   **ambient demo** - or clears the rack to write your own.
 - **SAVE** and **LOAD** keep whole racks - patterns, knobs, mixer, effects and the song - in
-  `.mzdebirth` files. The app also remembers where it was left.
+  `.mzdebirth` files. Closing the app with changes that haven't been saved asks whether to save
+  them first. **Save** writes them to the rack's file, or asks where the first time; **Don't
+  save** throws them away; **Cancel** keeps the app open. Next time it opens with the rack as
+  it was last saved.
 - **RACK** and **ARRANGE** (or F1 and F2), under the effects, switch between the rack and
   the Arrange window, where the patterns become a song - see below.
 - In the rack, the display beside **SONG MODE** shows where the song is, in bars, beats and
@@ -178,7 +181,13 @@ disk.
   - **GLUE** joins a part to the next.
   - **SNAP** sets what they all keep to: a bar, a beat, a sixteenth, or nothing. The
     toolbox menu also *Repeats* parts and renames them.
-- **The tracks:** one for each machine, so the song and the rack always match. M mutes a
+- **A part's patch:** on the Mz950, the Mz7 and the Mz106, right-click a part and pick its
+  **Patch**: a programme, a voice or a patch of the machine's own. It plays on that patch
+  from its first note. A part left on *The panel's own* plays on whatever the machine's panel
+  has picked, so the song sounds the same however you come to a part, from the top or
+  halfway through. The patch's name shows at the right of the part's top line. Picked with
+  several parts selected, it goes on all of those on the same machine.
+- **The tracks:** one for each machine in the rack, so the song and the rack always match. M mutes a
   track, S solos it, SH has it swing with the SHUFFLE knob, and **RACK** shows that machine
   in the rack, ringed for a moment, to turn its knobs. Right-click a track to rename or
   recolour it, or to clear its automation. **A** beside a track's name means it has
@@ -226,6 +235,16 @@ Double-click a part to edit it:
 
 ## The machines
 
+**+ MACHINE**, beside the RACK and ARRANGE tabs, adds a machine to the rack, and the **×** at
+the top right of a machine's panel takes it out again. Its patterns and knobs are kept, so
+putting it back brings it back as it was. Most racks don't want all seven. A machine left
+out has no panel, no track and no mixer channel, and costs nothing: it isn't played at all,
+which counts on a Raspberry Pi. Pick a machine that's already in and you get a second of
+it, for two 303s or two 909s. A second is a whole machine with its own
+patterns, knobs, patches and channel, and sits under its first in the rack and the Arrange
+window. A new rack has the first of each and no seconds. The demo songs put in the machines
+they play, and the rack saves which are in.
+
 - **Mz303** - the full panel, and a piano-roll step editor with the 303's UP, DOWN, ACCENT
   and SLIDE on every step. Click a cell for a note, click it again for a rest, drag along
   to keep going. A slide holds the note over into the next step and glides to it.
@@ -255,7 +274,10 @@ Double-click a part to edit it:
   the patch's own sliders, **CHORUS** overrides its chorus, and **VOLUME** is the plugin's:
   a single-note line wants it up, a chord doesn't. A 106 has no velocity, so accents play as
   any other note. Its steps are a grid of notes like the Mz7's. GENERATE gives it an
-  arpeggio of the chords; its chorus hisses as a real one does.
+  arpeggio of the chords; its chorus hisses as a real one does. **MORPH TO** picks a second
+  patch, and **MORPH** moves from one to the other. The sliders go step by step, as the 106
+  reads them, and the switches (waveforms, range, chorus, HPF) flip half way. Automate MORPH
+  in a song to sweep slowly from one sound to another.
 
 The step editors of the **Mz303**, **Mz101**, **Mz950**, **Mz7** and **Mz106** fold away: click
 the **STEP SEQUENCER** bar over one, and the machine folds down to its knobs, its pattern
@@ -434,8 +456,8 @@ of the time, the mix is running into the limiter: turn the MASTER or a fader dow
 **The step grid is missing.** That machine is folded: click its **STEP SEQUENCER** bar.
 
 **I lost my work.** **Ctrl+Z** in the Arrange window undoes edits to the song, takes and
-overdubs included. The app remembers where it was left, but **SAVE** is the only way to keep
-a rack for good.
+overdubs included. Closing asks before throwing unsaved changes away, and the app reopens
+with the rack as it was last saved, but **SAVE** is the only way to keep a rack for good.
 
 Something else? Please [open an issue](https://github.com/simozzer/MzDebirth/issues).
 

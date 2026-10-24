@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(MzDebirth VERSION 0.15.0 LANGUAGES C CXX)
+project(MzDebirth VERSION 0.16.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -132,6 +132,7 @@ juce_add_plugin(MzDebirth
 
 target_sources(MzDebirth PRIVATE
     Source/Processor.cpp
+    Source/App.cpp
     Source/UI/Look.cpp
     Source/UI/Widgets.cpp
     Source/UI/MonoRack.cpp
@@ -157,7 +158,8 @@ target_compile_definitions(MzDebirth PRIVATE ${CORE_DEFINITIONS})
 target_compile_definitions(MzDebirth PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
-    JUCE_DISPLAY_SPLASH_SCREEN=0)
+    JUCE_DISPLAY_SPLASH_SCREEN=0
+    JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1)   # App.cpp: closing asks to save
 
 target_link_libraries(MzDebirth
     PRIVATE

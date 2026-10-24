@@ -145,7 +145,7 @@ void ArrangeView::update()
     hBar.setRangeLimits(0.0, length, juce::dontSendNotification);
     hBar.setCurrentRange(state.scrollTick, width, juce::dontSendNotification);
 
-    const int total = (rowCount(song) + 1) * trackHeight;
+    const int total = (state.slots() + 1) * trackHeight;
     state.scrollY = juce::jlimit(0, juce::jmax(0, total - lane.getHeight()), state.scrollY);
     vBar.setRangeLimits(0.0, juce::jmax((double) total, (double) lane.getHeight()), juce::dontSendNotification);
     vBar.setCurrentRange(state.scrollY, lane.getHeight(), juce::dontSendNotification);
@@ -175,22 +175,24 @@ void ArrangeView::tick()
 
     // which machines are sounding
     std::array<bool, Rack::channels> active {};
-    active[Rack::M303] = rack.mz303.view().gateIsOn();
-    active[Rack::M101] = rack.mz101.view().gateIsOn();
-    auto hits = [] (const auto& engine, int voices)
+    for (int m = 0; m < Rack::channels; ++m)
     {
-        uint32_t n = 0;
-        for (int v = 0; v < voices; ++v) n += engine.hitCount(v);
-        return n;
-    };
-    const uint32_t h808 = hits(rack.mz808.view(), Mz808::voices), h909 = hits(rack.mz909.view(), Mz909::voices);
-    active[Rack::M808] = h808 != lastHits[Rack::M808];
-    active[Rack::M909] = h909 != lastHits[Rack::M909];
-    lastHits[Rack::M808] = h808;
-    lastHits[Rack::M909] = h909;
-    active[Rack::M950] = rack.mz950.activeVoices() > 0;
-    active[Rack::M7]   = rack.mz7.activeVoices() > 0;
-    active[Rack::M106] = rack.mz106.activeVoices() > 0;
+        if (! rack.channel[m].inRack.load()) continue;
+        rack.visit(m, [this, &active, m] (auto& x)
+        {
+            using T = std::decay_t<decltype(x)>;
+            if constexpr (isMono<T>) active[(size_t) m] = x.view().gateIsOn();
+            else if constexpr (isDrums<T>)
+            {
+                // a drum machine sounds while its hits keep coming
+                uint32_t n = 0;
+                for (int v = 0; v < T::voices; ++v) n += x.view().hitCount(v);
+                active[(size_t) m] = n != lastHits[(size_t) m];
+                lastHits[(size_t) m] = n;
+            }
+            else active[(size_t) m] = x.activeVoices() > 0;
+        });
+    }
     tracks.setActivity(active);
 
     transport.tick();

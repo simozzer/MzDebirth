@@ -85,6 +85,44 @@ struct State
     std::function<void()> changed;
     void repaintAll() { if (changed) changed(); }
 
+    //
+    // The rows shown: a track for each machine in the rack, then FX. A row keeps its track's
+    // index - fxRow() past them all - and its slot is where it is drawn, counting only the
+    // rows shown, so a machine left out of the rack leaves no gap.
+    //
+    bool shown(int row) const
+    {
+        const auto& tracks = song().tracks;
+        if (row == (int) tracks.size()) return true;   // FX
+        if (row < 0 || row > (int) tracks.size()) return false;
+        const int m = tracks[(size_t) row].machine;
+        return m < 0 || m >= debirth::Rack::channels || processor.rack.channel[m].inRack.load();
+    }
+    // where a row comes down the window, as the rack has its machines: each machine's second
+    // under its first, FX last
+    int orderOf(int row) const
+    {
+        const auto& tracks = song().tracks;
+        if (row < 0 || row >= (int) tracks.size()) return 1 << 20;   // FX
+        const int m = tracks[(size_t) row].machine;
+        return debirth::Rack::typeOf(m) * debirth::Rack::copies + debirth::Rack::copyOf(m);
+    }
+    int slotOf(int row) const
+    {
+        int slot = 0;
+        for (int r = 0; r <= (int) song().tracks.size(); ++r)
+            slot += r != row && shown(r) && orderOf(r) < orderOf(row) ? 1 : 0;
+        return slot;
+    }
+    int rowOfSlot(int slot) const   // -1 past the last
+    {
+        if (slot < 0) return -1;
+        for (int r = 0; r <= (int) song().tracks.size(); ++r)
+            if (shown(r) && slotOf(r) == slot) return r;
+        return -1;
+    }
+    int slots() const { return slotOf((int) song().tracks.size()) + 1; }
+
     // Over to the rack, at a machine, to turn its knobs - track n's is machine n.
     std::function<void(int machine)> showMachine;
 };

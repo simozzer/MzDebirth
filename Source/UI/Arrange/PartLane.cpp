@@ -17,6 +17,26 @@ std::vector<std::pair<int, Part>> PartLane::clipboard;
 
 namespace
 {
+    // the patches a part on the machine can choose, by number, as the machine names them
+    std::vector<std::string> patchNames(const DebirthProcessor& proc, int machine)
+    {
+        auto& rack = const_cast<DebirthProcessor&>(proc).rack;
+        if (machine < 0 || machine >= Rack::channels) return {};
+        return rack.visit(machine, [] (auto& x) -> std::vector<std::string>
+        {
+            using T = std::decay_t<decltype(x)>;
+            if constexpr (std::is_same_v<T, Mz7>)
+            {
+                auto names = x.programNames();
+                for (size_t i = 0; i < names.size(); ++i)
+                    names[i] = juce::String(i + 1).paddedLeft('0', 2).toStdString() + " " + names[i];
+                return names;
+            }
+            else if constexpr (std::is_same_v<T, Mz950> || std::is_same_v<T, Mz106>) return x.programNames();
+            else return {};
+        });
+    }
+
     // A part placed on a track, kept in order of start; returns where it went.
     void place(std::vector<Part>& parts, Part p)
     {
@@ -56,7 +76,7 @@ PartLane::PartLane(State& s) : state(s) {}
 
 int PartLane::rowAt(float y) const
 {
-    const int row = (int) std::floor((y + (float) state.scrollY) / (float) trackHeight);
+    const int row = state.rowOfSlot((int) std::floor((y + (float) state.scrollY) / (float) trackHeight));
     return row >= 0 && row < (int) state.song().tracks.size() ? row : -1;
 }
 
@@ -110,8 +130,10 @@ int PartLane::dragTracks(const juce::MouseEvent& e) const
 
 int PartLane::targetTrack(int from, int by) const
 {
+    // by rows shown: a machine out of the rack is stepped over
     const auto& tracks = state.song().tracks;
-    const int to = juce::jlimit(0, (int) tracks.size() - 1, from + by);
+    const int slot = juce::jlimit(0, state.slotOf((int) tracks.size()) - 1, state.slotOf(from) + by);
+    const int to = juce::jmax(0, state.rowOfSlot(slot));
     return machineKind(tracks[(size_t) to].machine) == machineKind(tracks[(size_t) from].machine) ? to : from;
 }
 
@@ -149,6 +171,16 @@ void PartLane::paintPart(juce::Graphics& g, juce::Rectangle<float> r, const Part
         g.setColour(colours::ink.withAlpha(p.muted ? 0.5f : 0.9f));
         g.setFont(fonts::bold(9.5f));
         g.drawText(juce::String(p.name), r.reduced(4.0f, 1.0f).withHeight(12.0f), juce::Justification::centredLeft);
+    }
+
+    // the patch it changes to, at the other end of its top line
+    if (p.program >= 0 && takesPatches(machine) && r.getWidth() > 60.0f)
+    {
+        const auto names = patchNames(state.processor, machine);
+        const juce::String patch = p.program < (int) names.size() ? juce::String(names[(size_t) p.program]) : "PATCH " + juce::String(p.program + 1);
+        g.setColour(colours::ink.withAlpha(p.muted ? 0.5f : 0.9f));
+        g.setFont(fonts::bold(9.0f));
+        g.drawText(patch.trim(), r.reduced(4.0f, 1.0f).withHeight(12.0f), juce::Justification::centredRight);
     }
 
     g.setColour(selected ? colours::light : juce::Colours::black.withAlpha(0.6f));
@@ -225,6 +257,7 @@ void PartLane::paint(juce::Graphics& g)
     // the lanes, and FX's under them
     for (int i = 0; i < rowCount(song); ++i)
     {
+        if (! state.shown(i)) continue;
         const float y = rowY(i);
         if (y > (float) getHeight() || y + trackHeight < 0.0f) continue;
         const auto fill = i == fxRow(song)  ? juce::Colour(0xff191b20)
@@ -245,6 +278,7 @@ void PartLane::paint(juce::Graphics& g)
     // the parts
     for (int t = 0; t < (int) tracks.size(); ++t)
     {
+        if (! state.shown(t)) continue;
         const float y = rowY(t);
         if (y > (float) getHeight() || y + trackHeight < 0.0f) continue;
         const auto colour = trackColour(tracks[(size_t) t].colour);
@@ -262,7 +296,7 @@ void PartLane::paint(juce::Graphics& g)
 
     // the automation, over the parts so it shows on them
     for (int t = 0; t < (int) tracks.size(); ++t)
-        paintAutomation(g, t, tracks[(size_t) t].machine, tracks[(size_t) t].automation);
+        if (state.shown(t)) paintAutomation(g, t, tracks[(size_t) t].machine, tracks[(size_t) t].automation);
     paintAutomation(g, fxRow(song), Rack::FX, song.fx);
 
     // what a drag would do
@@ -589,7 +623,7 @@ void PartLane::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelD
     }
     else
     {
-        const int total = rowCount(state.song()) * trackHeight;
+        const int total = state.slots() * trackHeight;
         state.scrollY = juce::jlimit(0, juce::jmax(0, total - getHeight() + trackHeight), state.scrollY - (int) (w.deltaY * 120.0f));
     }
     state.repaintAll();
@@ -633,6 +667,7 @@ void PartLane::paste()
     {
         const auto& tracks = state.song().tracks;
         const int to = juce::jlimit(0, (int) tracks.size() - 1, base + t - top);
+        if (! state.shown(to)) continue;
         if (machineKind(tracks[(size_t) to].machine) != machineKind(tracks[(size_t) juce::jlimit(0, (int) tracks.size() - 1, t)].machine)) continue;
         Part q = p;
         q.start = at + p.start - earliest;
@@ -725,6 +760,27 @@ void PartLane::toolbox(const juce::MouseEvent& e)
         m.addSubMenu("Repeat", repeat);
         m.addItem(32, p.muted ? "Unmute" : "Mute");
         m.addItem(33, "Delete");
+
+        // the patch it plays on: the machine's own as its panel has it, or one of its own
+        const int machine = state.song().tracks[(size_t) ref.first].machine;
+        if (takesPatches(machine))
+        {
+            const auto names = patchNames(state.processor, machine);
+            juce::PopupMenu patches;
+            patches.addItem(999, "The panel's own", true, p.program < 0);
+            patches.addSeparator();
+            const int perMenu = Rack::typeOf(machine) == Rack::M106 ? 8 : (int) names.size();   // the 106's by bank, as it numbers them
+            for (int from = 0; from < (int) names.size(); from += juce::jmax(1, perMenu))
+            {
+                juce::PopupMenu group;
+                auto& into = perMenu < (int) names.size() ? group : patches;
+                for (int i = from; i < juce::jmin((int) names.size(), from + perMenu); ++i)
+                    into.addItem(1000 + i, juce::String(names[(size_t) i]).trim(), true, p.program == i);
+                if (perMenu < (int) names.size())
+                    patches.addSubMenu(juce::String(names[(size_t) from]).substring(0, 2), group, true, juce::Image(), p.program >= from && p.program < from + perMenu);
+            }
+            m.addSubMenu("Patch", patches);
+        }
     }
 
     if (row >= 0)
@@ -780,6 +836,19 @@ void PartLane::toolbox(const juce::MouseEvent& e)
             Part p;
             p.start = at;
             st.doc().edit([row, p] (Song& s) { place(s.tracks[(size_t) row].parts, p); });
+        }
+        else if (id == 999 || id >= 1000)
+        {
+            // every part picked on the same machine onto that patch
+            const int program = id == 999 ? -1 : id - 1000;
+            const auto picked = st.selection;
+            const int machine = valid(st.song(), ref) ? st.song().tracks[(size_t) ref.first].machine : -1;
+            st.doc().edit([picked, ref, machine, program] (Song& s)
+            {
+                for (const auto& r : picked.empty() ? std::set<PartRef> { ref } : picked)
+                    if (valid(s, r) && s.tracks[(size_t) r.first].machine == machine)
+                        s.tracks[(size_t) r.first].parts[(size_t) r.second].program = program;
+            });
         }
         else if (id > 40 && id <= 56) self->repeatSelection(id - 40);
         else if (id >= 100 && row >= 0) self->insertPattern(row, id - 100, at);

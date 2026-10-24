@@ -7,6 +7,8 @@
 #include "J106/Banks.h"
 #include "UI/MainPanel.h"
 
+#include <type_traits>
+
 using namespace debirth;
 
 //============================================================================== the first time
@@ -47,7 +49,11 @@ DebirthProcessor::DebirthProcessor()
     : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true))
 {
     // Every change to the song is compiled and handed to the audio thread.
-    song.onChange = [this] (const Song& s) { rack.publish(std::make_unique<Playback>(compile(s, &rack))); };
+    song.onChange = [this] (const Song& s)
+    {
+        rack.publish(std::make_unique<Playback>(compile(s, &rack)));
+        prepareSongPatches();
+    };
 
     // Something to play the first time it is opened. A saved state replaces it.
     startAfresh(Fresh::AcidDemo);
@@ -105,9 +111,21 @@ void DebirthProcessor::transposeToKey()
     ++loads;
 }
 
+// the 950s' programmes the song's parts change to, built ahead so each lands on its beat
+void DebirthProcessor::prepareSongPatches()
+{
+    for (const auto& t : song.song().tracks)
+        if (Rack::typeOf(t.machine) == Rack::M950)
+            for (const auto& p : t.parts)
+                if (p.program >= 0) (t.machine == Rack::M950 ? rack.mz950 : rack.mz950b).prepareProgram(p.program);
+}
+
 void DebirthProcessor::timerCallback()
 {
     rack.mz950.service();
+    rack.mz950b.service();
+
+    prepareSongPatches();
     rack.collect();   // the song the audio thread handed back
 
     if (taking())
@@ -233,11 +251,12 @@ bool DebirthProcessor::overdubbing() const
 bool DebirthProcessor::controlOf(const void* table, int index, int& owner, int& param) const
 {
     using debirth::Rack;
-    const void* knobs[Rack::owners] = { &rack.mz303.knobs, &rack.mz101.knobs, &rack.mz808.knobs,
-                                        &rack.mz909.knobs, &rack.mz950.knobs, &rack.mz7.knobs, &rack.mz106.knobs,
-                                        &rack.fx };
     for (int o = 0; o < Rack::owners; ++o)
-        if (table == knobs[o]) { owner = o; param = index; return param >= 0 && param < rack.paramCount(o); }
+    {
+        const void* knobs = o == Rack::FX ? static_cast<const void*>(&rack.fx)
+                                          : rack.visit(o, [] (const auto& x) { return static_cast<const void*>(&x.knobs); });
+        if (table == knobs) { owner = o; param = index; return param >= 0 && param < rack.paramCount(o); }
+    }
 
     for (int m = 0; m < Rack::channels; ++m)
         if (table == &rack.channel[m])
@@ -408,8 +427,10 @@ juce::AudioProcessorEditor* DebirthProcessor::createEditor()
 
 namespace
 {
-    // the machines, as saved: their element names, in rack order
-    const char* const machineNames[Rack::channels] = { "Mz303", "Mz101", "Mz808", "Mz909", "Mz950", "Mz7", "Mz106" };
+    // the machines, as saved: their element names, in rack order - no spaces, since they are
+    // XML elements, and listed with spaces between them
+    const char* const machineNames[Rack::channels] = { "Mz303", "Mz101", "Mz808", "Mz909", "Mz950", "Mz7", "Mz106",
+                                                       "Mz303-2", "Mz101-2", "Mz808-2", "Mz909-2", "Mz950-2", "Mz7-2", "Mz106-2" };
 
     template <class S>
     void saveKnobs(juce::ValueTree& t, const Knobs<S>& k)
@@ -512,6 +533,95 @@ namespace
     }
 
     //
+    // A machine as saved, with what its kind has besides its knobs and patterns. The sampler's
+    // disk by where it is, not what is on it: a disk is a megabyte, and it is still on the disk
+    // it came from. The Mz7's cartridge whole - 4 KB - since it may be an edit, or a .syx that
+    // has since moved; one of the four it comes with by its number. The Mz106's bank likewise:
+    // the factory's by name, or whole - 3 KB - when it came from a .syx.
+    //
+    template <class Machine>
+    juce::ValueTree saveWhole(const char* name, const Machine& m)
+    {
+        auto t = saveMachine(name, m);
+        if constexpr (std::is_same_v<Machine, Mz950>)
+        {
+            t.setProperty("disk", juce::String(m.diskPath()), nullptr);
+            t.setProperty("program", m.program(), nullptr);
+        }
+        else if constexpr (std::is_same_v<Machine, Mz7>)
+        {
+            t.setProperty("bank", m.bank(), nullptr);
+            t.setProperty("program", m.program(), nullptr);
+            if (m.bank() < 0)
+            {
+                const auto s = dx7::cartridgeSysex(m.cartridge());
+                t.setProperty("cartridge", juce::Base64::toBase64(s.data(), s.size()), nullptr);
+                t.setProperty("cartridgeName", juce::String(m.cartridgeName()), nullptr);
+            }
+        }
+        else if constexpr (std::is_same_v<Machine, Mz106>)
+        {
+            t.setProperty("program", m.program(), nullptr);
+            t.setProperty("morphTo", m.morphTarget(), nullptr);
+            if (! m.isFactory())
+            {
+                const auto s = j106::bankSysex(m.bank());
+                t.setProperty("bank", juce::Base64::toBase64(s.data(), s.size()), nullptr);
+                t.setProperty("bankName", juce::String(m.bankName()), nullptr);
+            }
+        }
+        return t;
+    }
+
+    template <class Machine>
+    void loadWhole(const juce::ValueTree& root, const char* name, Machine& m)
+    {
+        loadMachine(root, name, m);
+        const auto t = root.getChildWithName(name);
+        if (! t.isValid()) return;
+
+        if constexpr (std::is_same_v<Machine, Mz950>)
+        {
+            // the disk, if it is still there, and not already in
+            const auto disk = t.getProperty("disk").toString();
+            std::string error;
+            if (disk.isNotEmpty() && juce::File(disk).existsAsFile()
+                && (disk.toStdString() == m.diskPath() || m.loadDisk(disk.toStdString(), error)))
+                m.selectProgram((int) t.getProperty("program", 0));
+        }
+        else if constexpr (std::is_same_v<Machine, Mz7>)
+        {
+            const int b = t.getProperty("bank", 0);
+            juce::MemoryOutputStream bytes;
+            dx7::Cartridge c;
+            int count = 0;
+            std::string error, warning;
+            if (b < 0 && juce::Base64::convertFromBase64(bytes, t.getProperty("cartridge").toString())
+                && dx7::readSysex(static_cast<const uint8_t*>(bytes.getData()), bytes.getDataSize(), c, count, error, warning)
+                && count == 32)
+                m.setCartridge(c, t.getProperty("cartridgeName", "CARTRIDGE").toString().toStdString());
+            else
+                m.loadBank(juce::jmax(0, b));
+            m.selectProgram((int) t.getProperty("program", 0));
+        }
+        else if constexpr (std::is_same_v<Machine, Mz106>)
+        {
+            juce::MemoryOutputStream bytes;
+            j106::Bank b = j106::factoryBank();
+            int count = 0;
+            std::string error;
+            if (juce::Base64::convertFromBase64(bytes, t.getProperty("bank").toString())
+                && j106::readSysex(static_cast<const uint8_t*>(bytes.getData()), bytes.getDataSize(), b, count, error)
+                && count > 0)
+                m.setBank(b, t.getProperty("bankName", "BANK").toString().toStdString());
+            else
+                m.loadFactory();
+            m.selectProgram((int) t.getProperty("program", 0));
+            m.setMorphTarget((int) t.getProperty("morphTo", -1));
+        }
+    }
+
+    //
     // The song: a track a child, a part a child of that, and a part's notes as text - each
     // note its tick, length, pitch and velocity, joined by colons.
     //
@@ -579,6 +689,7 @@ namespace
                 pt.setProperty("length", part.length, nullptr);
                 pt.setProperty("muted", part.muted, nullptr);
                 if (part.loop > 0) pt.setProperty("loop", part.loop, nullptr);
+                if (part.program >= 0) pt.setProperty("program", part.program, nullptr);
 
                 juce::StringArray notes;
                 for (const auto& n : part.notes)
@@ -627,6 +738,7 @@ namespace
                 part.length = juce::jmax(1, (int) pt.getProperty("length", ticksPerBar));
                 part.muted = (bool) pt.getProperty("muted", false);
                 part.loop = juce::jmax(0, (int) pt.getProperty("loop", 0));
+                part.program = juce::jmax(-1, (int) pt.getProperty("program", -1));
 
                 for (const auto& token : juce::StringArray::fromTokens(pt.getProperty("notes").toString(), " ", ""))
                 {
@@ -669,41 +781,14 @@ juce::ValueTree DebirthProcessor::save() const
         if (folded[(size_t) m]) foldedNames.add(machineNames[m]);
     root.setProperty("folded", foldedNames.joinIntoString(" "), nullptr);
 
-    root.appendChild(saveMachine(machineNames[Rack::M303], rack.mz303), nullptr);
-    root.appendChild(saveMachine(machineNames[Rack::M101], rack.mz101), nullptr);
-    root.appendChild(saveMachine(machineNames[Rack::M808], rack.mz808), nullptr);
-    root.appendChild(saveMachine(machineNames[Rack::M909], rack.mz909), nullptr);
+    // the machines in the rack
+    juce::StringArray inNames;
+    for (int m = 0; m < Rack::channels; ++m)
+        if (rack.channel[m].inRack.load()) inNames.add(machineNames[m]);
+    root.setProperty("machines", inNames.joinIntoString(" "), nullptr);
 
-    // The sampler's disk is saved by where it is, not what is on it: a disk is a megabyte,
-    // and it is still on the disk it came from.
-    auto sampler = saveMachine(machineNames[Rack::M950], rack.mz950);
-    sampler.setProperty("disk", juce::String(rack.mz950.diskPath()), nullptr);
-    sampler.setProperty("program", rack.mz950.program(), nullptr);
-    root.appendChild(sampler, nullptr);
-
-    // The Mz7's cartridge rides along whole - 4 KB - since it may be an edit, or a .syx that has
-    // since moved; one of the four it comes with is saved by its number.
-    auto fm = saveMachine(machineNames[Rack::M7], rack.mz7);
-    fm.setProperty("bank", rack.mz7.bank(), nullptr);
-    fm.setProperty("program", rack.mz7.program(), nullptr);
-    if (rack.mz7.bank() < 0)
-    {
-        const auto s = dx7::cartridgeSysex(rack.mz7.cartridge());
-        fm.setProperty("cartridge", juce::Base64::toBase64(s.data(), s.size()), nullptr);
-        fm.setProperty("cartridgeName", juce::String(rack.mz7.cartridgeName()), nullptr);
-    }
-    root.appendChild(fm, nullptr);
-
-    // The Mz106's bank likewise: its own by name, or whole - 3 KB - when it came from a .syx.
-    auto juno = saveMachine(machineNames[Rack::M106], rack.mz106);
-    juno.setProperty("program", rack.mz106.program(), nullptr);
-    if (! rack.mz106.isFactory())
-    {
-        const auto s = j106::bankSysex(rack.mz106.bank());
-        juno.setProperty("bank", juce::Base64::toBase64(s.data(), s.size()), nullptr);
-        juno.setProperty("bankName", juce::String(rack.mz106.bankName()), nullptr);
-    }
-    root.appendChild(juno, nullptr);
+    for (int m = 0; m < Rack::channels; ++m)
+        root.appendChild(rack.visit(m, [m] (const auto& x) { return saveWhole(machineNames[m], x); }), nullptr);
 
     juce::ValueTree effects("Effects");
     saveKnobs(effects, rack.fx);
@@ -749,6 +834,11 @@ void DebirthProcessor::load(const juce::ValueTree& root)
     for (int m = 0; m < Rack::channels; ++m)
         folded[(size_t) m] = foldedNames.contains(machineNames[m]);
 
+    // the machines in the rack - in a rack saved before they could be chosen, the first of each
+    const auto inNames = juce::StringArray::fromTokens(root.getProperty("machines").toString(), false);
+    for (int m = 0; m < Rack::channels; ++m)
+        rack.channel[m].inRack = root.hasProperty("machines") ? inNames.contains(machineNames[m]) : Rack::copyOf(m) == 0;
+
     // the key, as its code: "8A"; -1 for anything else
     auto keyOf = [] (const juce::String& code)
     {
@@ -764,56 +854,8 @@ void DebirthProcessor::load(const juce::ValueTree& root)
     for (int b = 0; b < banks && b < bankKeys.size(); ++b)
         rack.bankKey[b] = keyOf(bankKeys[b]);
 
-    loadMachine(root, machineNames[Rack::M303], rack.mz303);
-    loadMachine(root, machineNames[Rack::M101], rack.mz101);
-    loadMachine(root, machineNames[Rack::M808], rack.mz808);
-    loadMachine(root, machineNames[Rack::M909], rack.mz909);
-    loadMachine(root, machineNames[Rack::M950], rack.mz950);
-    loadMachine(root, machineNames[Rack::M7], rack.mz7);
-    loadMachine(root, machineNames[Rack::M106], rack.mz106);
-
-    // The sampler's disk, if it is still there, and not already in.
-    const auto sampler = root.getChildWithName(machineNames[Rack::M950]);
-    const auto disk = sampler.getProperty("disk").toString();
-    if (disk.isNotEmpty() && juce::File(disk).existsAsFile())
-    {
-        std::string error;
-        if (disk.toStdString() == rack.mz950.diskPath() || rack.mz950.loadDisk(disk.toStdString(), error))
-            rack.mz950.selectProgram((int) sampler.getProperty("program", 0));
-    }
-
-    // The Mz7's cartridge: one of its own by number, or the one saved with the rack.
-    if (const auto fm = root.getChildWithName(machineNames[Rack::M7]); fm.isValid())
-    {
-        const int b = fm.getProperty("bank", 0);
-        juce::MemoryOutputStream bytes;
-        dx7::Cartridge c;
-        int count = 0;
-        std::string error, warning;
-        if (b < 0 && juce::Base64::convertFromBase64(bytes, fm.getProperty("cartridge").toString())
-            && dx7::readSysex(static_cast<const uint8_t*>(bytes.getData()), bytes.getDataSize(), c, count, error, warning)
-            && count == 32)
-            rack.mz7.setCartridge(c, fm.getProperty("cartridgeName", "CARTRIDGE").toString().toStdString());
-        else
-            rack.mz7.loadBank(juce::jmax(0, b));
-        rack.mz7.selectProgram((int) fm.getProperty("program", 0));
-    }
-
-    // The Mz106's bank: the factory's, or the one saved with the rack.
-    if (const auto juno = root.getChildWithName(machineNames[Rack::M106]); juno.isValid())
-    {
-        juce::MemoryOutputStream bytes;
-        j106::Bank b = j106::factoryBank();
-        int count = 0;
-        std::string error;
-        if (juce::Base64::convertFromBase64(bytes, juno.getProperty("bank").toString())
-            && j106::readSysex(static_cast<const uint8_t*>(bytes.getData()), bytes.getDataSize(), b, count, error)
-            && count > 0)
-            rack.mz106.setBank(b, juno.getProperty("bankName", "BANK").toString().toStdString());
-        else
-            rack.mz106.loadFactory();
-        rack.mz106.selectProgram((int) juno.getProperty("program", 0));
-    }
+    for (int m = 0; m < Rack::channels; ++m)
+        rack.visit(m, [&root, m] (auto& x) { loadWhole(root, machineNames[m], x); });
 
     if (const auto effects = root.getChildWithName("Effects"); effects.isValid())
         loadKnobs(effects, rack.fx);
@@ -842,6 +884,7 @@ void DebirthProcessor::load(const juce::ValueTree& root)
         view = s.getProperty("view").toString() == "arrange" ? View::Arrange : View::Rack;
     }
 
+    markSaved();   // as it was saved
     ++loads;
 }
 
@@ -852,13 +895,8 @@ void DebirthProcessor::startAfresh(Fresh fresh)
     rack.master = 0.8f;
     for (auto& k : rack.bankKey) k = -1;   // the KEY and STYLE are the DJ's, and stay
 
-    rack.mz303.knobs.reset();
-    rack.mz101.knobs.reset();
-    rack.mz808.knobs.reset();
-    rack.mz909.knobs.reset();
-    rack.mz950.knobs.reset();
-    rack.mz7.knobs.reset();
-    rack.mz106.knobs.reset();
+    for (int m = 0; m < Rack::channels; ++m)
+        rack.visit(m, [] (auto& x) { x.knobs.reset(); });
     rack.fx.reset();
 
     for (int m = 0; m < Rack::channels; ++m)
@@ -888,6 +926,7 @@ void DebirthProcessor::startAfresh(Fresh fresh)
     {
         writeFactoryGrooves();
         voiceForAcid(rack);
+        for (int m = 0; m < Rack::types; ++m) rack.channel[m].inRack = true;   // it plays the first of each
         rack.tempo = demoTempo;
         song.replace(demoSong(rack));
         rack.mode = Mode::Song;
@@ -905,6 +944,8 @@ void DebirthProcessor::startAfresh(Fresh fresh)
         const bool whales = voiceForAmbient(rack, disk.existsAsFile() ? disk.getFullPathName().toStdString() : std::string());
         dressForAmbient(rack);
         rack.tempo = ambientTempo;
+        for (int m : { Rack::M303, Rack::M101, Rack::M950, Rack::M7, Rack::M106 })
+            rack.channel[m].inRack = true;   // the machines it plays; the drum machines as they were
         song.replace(ambientSong(rack, whales));
         rack.mode = Mode::Song;
         view = View::Arrange;
@@ -915,6 +956,7 @@ void DebirthProcessor::startAfresh(Fresh fresh)
         rack.mode = Mode::Pattern;
     }
 
+    markSaved();   // nothing to save yet
     ++loads;
 }
 
@@ -923,6 +965,8 @@ void DebirthProcessor::getStateInformation(juce::MemoryBlock& dest)
     auto tree = save();
     if (windowWidth > 0 && windowHeight > 0)
         tree.setProperty("window", juce::String(windowWidth) + " " + juce::String(windowHeight), nullptr);
+    if (rackFile != juce::File())
+        tree.setProperty("rackFile", rackFile.getFullPathName(), nullptr);   // the session's, not the rack's
 
     if (auto xml = tree.createXml())
         copyXmlToBinary(*xml, dest);
@@ -940,10 +984,34 @@ void DebirthProcessor::setStateInformation(const void* data, int size)
             windowHeight = window[1].getIntValue();
         }
         load(tree);
+        rackFile = tree.hasProperty("rackFile") ? juce::File(tree.getProperty("rackFile").toString()) : juce::File();
     }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new DebirthProcessor();
+}
+
+//============================================================================== saved, or not
+
+// the rack as saved, less where you are in it: the song's cursor, the view, the folds
+juce::String DebirthProcessor::fingerprint() const
+{
+    auto t = save();
+    t.removeProperty("folded", nullptr);
+    auto s = t.getChildWithName("Song");
+    s.removeProperty("view", nullptr);
+    s.removeProperty("cursor", nullptr);
+    return t.toXmlString();
+}
+
+void DebirthProcessor::markSaved()
+{
+    savedPrint = fingerprint();
+}
+
+bool DebirthProcessor::hasUnsavedChanges() const
+{
+    return fingerprint() != savedPrint;
 }

@@ -58,6 +58,16 @@ JunoRack::JunoRack(Mz106& j, Channel& c, std::function<bool()> p, const Theme& t
     };
     addAndMakeVisible(programBox);
 
+    styleBox(morphBox);
+    morphBox.setTooltip("MORPH TO: a second patch the MORPH knob moves towards - its sliders step by step, its "
+                        "switches flipping half way. Automate MORPH in a song to sweep between the two.");
+    morphBox.onChange = [this]
+    {
+        const int id = morphBox.getSelectedId();
+        juno.setMorphTarget(id >= 2 ? id - 2 : -1);
+    };
+    addAndMakeVisible(morphBox);
+
     octaveDown.setShowsLed(false);
     octaveUp.setShowsLed(false);
     octaveDown.setTooltip("Show the keys an octave lower. The wheel over the key names moves them a key at a time.");
@@ -126,6 +136,12 @@ void JunoRack::showBank()
         programBox.addItem(juce::String(names[i]), (int) i + 1);
     programBox.setSelectedItemIndex(juno.program(), juce::dontSendNotification);
 
+    morphBox.clear(juce::dontSendNotification);
+    morphBox.addItem("MORPH TO: OFF", 1);
+    for (size_t i = 0; i < names.size(); ++i)
+        morphBox.addItem("MORPH TO " + juce::String(names[i]), (int) i + 2);
+    morphBox.setSelectedId(juno.morphTarget() + 2, juce::dontSendNotification);
+
     if (message.isNotEmpty()) programBox.setTooltip(message);
     repaint();
 }
@@ -171,6 +187,8 @@ void JunoRack::resized()
     loadSyx.setBounds(row.removeFromLeft(96));
     row.removeFromLeft(8);
     programBox.setBounds(row.removeFromLeft(220));
+    row.removeFromLeft(8);
+    morphBox.setBounds(row.removeFromLeft(240));
     octaveUp.setBounds(row.removeFromRight(64));
     row.removeFromRight(6);
     octaveDown.setBounds(row.removeFromRight(64));

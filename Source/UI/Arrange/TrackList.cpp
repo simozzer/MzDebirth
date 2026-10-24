@@ -23,14 +23,13 @@ void TrackList::setActivity(const std::array<bool, Rack::channels>& a)
 
 juce::Rectangle<int> TrackList::rowBounds(int row) const
 {
-    return { 0, rulerHeight + row * trackHeight - state.scrollY, getWidth(), trackHeight };
+    return { 0, rulerHeight + state.slotOf(row) * trackHeight - state.scrollY, getWidth(), trackHeight };
 }
 
 int TrackList::rowAt(int y) const
 {
     if (y < rulerHeight) return -1;
-    const int row = (y - rulerHeight + state.scrollY) / trackHeight;
-    return row < rowCount(state.song()) ? row : -1;
+    return state.rowOfSlot((y - rulerHeight + state.scrollY) / trackHeight);
 }
 
 juce::Rectangle<int> TrackList::switchBounds(int row, int which) const
@@ -91,6 +90,7 @@ void TrackList::paint(juce::Graphics& g)
 
     for (int i = 0; i < (int) tracks.size(); ++i)
     {
+        if (! state.shown(i)) continue;
         const auto r = rowBounds(i);
         if (r.getBottom() < rulerHeight || r.getY() > getHeight()) continue;
         const auto& t = tracks[(size_t) i];
@@ -319,7 +319,7 @@ void TrackList::mouseDoubleClick(const juce::MouseEvent& e)
 
 void TrackList::mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails& w)
 {
-    const int total = rowCount(state.song()) * trackHeight;
+    const int total = state.slots() * trackHeight;
     const int visible = getHeight() - rulerHeight;
     state.scrollY = juce::jlimit(0, juce::jmax(0, total - visible + trackHeight), state.scrollY - (int) (w.deltaY * 120.0f));
     state.repaintAll();

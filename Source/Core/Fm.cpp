@@ -42,6 +42,7 @@ void Mz7::loadBank(int b)
     path.clear();
     bankIndex = b;
     programIndex = -1;
+    sendCartridge();
     selectProgram(0);
 }
 
@@ -78,6 +79,7 @@ void Mz7::setCartridge(const dx7::Cartridge& c, const std::string& title)
     for (int b = 0; b < ::banks::count(); ++b)
         if (::banks::get(b).voices == c.voices) { bankIndex = b; name = ::banks::name(b); }
     programIndex = -1;
+    sendCartridge();
     selectProgram(0);
 }
 
@@ -110,6 +112,13 @@ void Mz7::send(const dx7::Patch& p)
     pendingNew = true;
 }
 
+void Mz7::sendCartridge()
+{
+    std::lock_guard<std::mutex> g(lock);
+    pendingCart = cart;
+    pendingCartNew = true;
+}
+
 //============================================================================== playing
 
 void Mz7::prepare(double sampleRate)
@@ -129,9 +138,14 @@ void Mz7::update()
         std::unique_lock<std::mutex> g(lock, std::try_to_lock);
         if (g.owns_lock() && pendingNew)
         {
-            voice = pending;
+            voice = homeVoice = pending;
             pendingNew = false;
             dirty = true;
+        }
+        if (g.owns_lock() && pendingCartNew)
+        {
+            audioCart = pendingCart;
+            pendingCartNew = false;
         }
     }
 
@@ -142,6 +156,17 @@ void Mz7::update()
         && s.decay == applied.decay && s.release == applied.release)
         return;
 
+    applyVoice(s);
+}
+
+void Mz7::songProgram(int index)
+{
+    voice = index >= 0 && index < (int) audioCart.voices.size() ? audioCart.voices[(size_t) index] : homeVoice;
+    applyVoice(applied);
+}
+
+void Mz7::applyVoice(const FmSettings& s)
+{
     applied = s;
     dirty = false;
 

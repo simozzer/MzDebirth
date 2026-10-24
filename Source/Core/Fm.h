@@ -84,9 +84,15 @@ public:
 
     int activeVoices() const { return voicesSounding.load(std::memory_order_relaxed); }
 
+    // a part starting on a voice of its own, by number - -1 the one picked on the panel. At
+    // once, so the part's first note plays on it.
+    void songProgram(int index);
+
 private:
     void releaseAll();
     void send(const dx7::Patch&);
+    void sendCartridge();             // the cartridge, for the song's voice changes
+    void applyVoice(const FmSettings&);
 
     dx7::Cartridge cart;
     std::string path, name;
@@ -96,10 +102,14 @@ private:
     std::mutex lock;
     dx7::Patch pending;
     bool pendingNew = false;
+    dx7::Cartridge pendingCart;
+    bool pendingCartNew = false;
 
     // the audio thread's
     dx7::Engine engine;
     dx7::Patch voice;              // as chosen
+    dx7::Patch homeVoice;          // as the panel chose it
+    dx7::Cartridge audioCart;      // the cartridge, the audio thread's copy
     FmSettings applied;            // the performance controls last laid over it
     bool dirty = true;
     std::atomic<int> voicesSounding { 0 };

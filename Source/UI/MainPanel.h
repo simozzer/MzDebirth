@@ -52,6 +52,24 @@ private:
 };
 
 //
+// The × at the top of a machine's panel: takes it out of the rack, its patterns and knobs
+// kept for when it comes back.
+//
+class RemoveButton final : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    std::function<void()> onPress;
+
+    void paint(juce::Graphics&) override;
+    void mouseEnter(const juce::MouseEvent&) override { repaint(); }
+    void mouseExit(const juce::MouseEvent&) override  { repaint(); }
+    void mouseUp(const juce::MouseEvent& e) override
+    {
+        if (getLocalBounds().contains(e.getPosition()) && onPress) onPress();
+    }
+};
+
+//
 // The machines, one above another, between wooden cheeks - taller than the window, so it
 // scrolls under the transport.
 //
@@ -72,6 +90,9 @@ public:
     // a step roll folded or unfolded: the rack is a different height
     std::function<void()> onHeightChanged;
 
+    // a machine taken out by its ×: the rack and the tracks are different
+    std::function<void()> onMachinesChanged;
+
     void paint(juce::Graphics&) override;
     void paintOverChildren(juce::Graphics&) override;
     void resized() override;
@@ -81,14 +102,36 @@ private:
 
     DebirthProcessor& processor;
     int flashing = -1, flashTicks = 0;
+    RemoveButton removers[debirth::Rack::channels];
+    void remove(int machine);
 
+    // a panel for every slot: the first of each machine, then the second
     MonoRack mz303, mz101;
     DrumRack mz808, mz909;
     SamplerRack mz950;
     FmRack mz7;
     JunoRack mz106;
+    MonoRack mz303b, mz101b;
+    DrumRack mz808b, mz909b;
+    SamplerRack mz950b;
+    FmRack mz7b;
+    JunoRack mz106b;
 
-    std::vector<juce::Component*> units() { return { &mz303, &mz101, &mz808, &mz909, &mz950, &mz7, &mz106 }; }
+    std::vector<juce::Component*> units()
+    {
+        return { &mz303, &mz101, &mz808, &mz909, &mz950, &mz7, &mz106,
+                 &mz303b, &mz101b, &mz808b, &mz909b, &mz950b, &mz7b, &mz106b };
+    }
+
+    // f with each slot's panel, as its own type, and the slot
+    template <class F>
+    void eachUnit(F&& f)
+    {
+        f(mz303, 0); f(mz101, 1); f(mz808, 2); f(mz909, 3); f(mz950, 4); f(mz7, 5); f(mz106, 6);
+        f(mz303b, 7); f(mz101b, 8); f(mz808b, 9); f(mz909b, 10); f(mz950b, 11); f(mz7b, 12); f(mz106b, 13);
+    }
+    template <class F>
+    void eachUnit(F&& f) const { const_cast<RackView*>(this)->eachUnit(std::forward<F>(f)); }
 };
 
 //
@@ -141,7 +184,9 @@ public:
 private:
     void timerCallback() override;
     void refresh();
-    void saveFile();
+    void saveFile(std::function<void(bool saved)> done = {});
+    bool writeRack(const juce::File&);
+    void askToSave(std::function<void(bool keep)> quit);
     void loadFile();
     void exportFile();
     void showView(int view);   // View::Rack or View::Arrange
@@ -156,6 +201,7 @@ private:
     juce::Viewport viewport;
     arrange::ArrangeView arrangeView;
     Pad rackTab { "RACK" }, arrangeTab { "ARRANGE" }, songMode { "SONG MODE" };
+    Pad machines { "+ MACHINE" };   // a machine into the rack
 
     // in the rack, where the song is: a take's progress, the song playing, or the cursor
     arrange::LedText songPosition;

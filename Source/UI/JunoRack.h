@@ -41,7 +41,7 @@ private:
     Theme theme;
 
     PatternPanel patterns;
-    juce::ComboBox bankBox, programBox;
+    juce::ComboBox bankBox, programBox, morphBox;
     Pad loadSyx { "LOAD .SYX" };
     Pad octaveDown { "OCT -" }, octaveUp { "OCT +" };
     std::vector<std::unique_ptr<juce::Component>> controls;

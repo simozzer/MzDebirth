@@ -21,6 +21,7 @@
 #include <fstream>
 #include <random>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 using namespace debirth;
@@ -1591,7 +1592,8 @@ void demo()
     check(inOrder, "a track for each machine, in the rack's order", fmt("%zu tracks", s.tracks.size()));
 
     int empty = 0;
-    for (const auto& t : s.tracks) empty += t.parts.empty() && (t.machine != Rack::M950 || kit) ? 1 : 0;
+    for (const auto& t : s.tracks)   // the first of each machine: the seconds are out of the rack
+        empty += Rack::copyOf(t.machine) == 0 && t.parts.empty() && (t.machine != Rack::M950 || kit) ? 1 : 0;
     check(empty == 0 && s.end() == 64 * ticksPerBar, "sixty-four bars, every track playing",
           fmt("%zu tracks, %d empty, %d bars", s.tracks.size(), empty, s.end() / ticksPerBar));
 
@@ -1766,6 +1768,279 @@ void ambientDemo()
     check(restored, "played through, every knob is back where it was set");
 }
 
+//
+// A machine left out of the rack: not rendered and not mixed, so the acid demo with only the
+// 808 and the 303 in sounds exactly as it does with the rest muted.
+//
+void leftOut()
+{
+    std::printf("\nmachines left out of the rack\n");
+
+    auto render = [] (bool leaveOut)
+    {
+        Rack r;
+        r.prepare(48000, 512);
+        writeGrooves(r);
+        voiceForAcid(r);
+        r.tempo = demoTempo;
+        r.mode = Mode::Song;
+        for (int m = 0; m < Rack::channels; ++m)
+        {
+            const bool keep = m == Rack::M808 || m == Rack::M303;
+            if (leaveOut) r.channel[m].inRack = keep;
+            else          r.channel[m].mute = ! keep;
+        }
+        const Song s = demoSong(r);
+        std::vector<float> out;
+        int64_t done = 0;
+        bounce(r, s, 48000.0, 0.0, [&] (const float* l, const float* rr, int n, double)
+        {
+            for (int i = 0; i < n && done < 48000 * 30; ++i, ++done) out.push_back(l[i] + rr[i]);
+            return done < 48000 * 30;
+        });
+        return out;
+    };
+
+    const auto out = render(true), muted = render(false);
+    double worst = 0, peak = 0;
+    for (size_t i = 0; i < std::min(out.size(), muted.size()); ++i)
+    {
+        worst = std::max(worst, (double) std::fabs(out[i] - muted[i]));
+        peak = std::max(peak, (double) std::fabs(muted[i]));
+    }
+    check(out.size() == muted.size() && peak > 0.1 && worst < 1.0e-4,
+          "with five machines left out, the rack sounds as with them muted", fmt("differs by %.6f at most, of %.2f", worst, peak));
+}
+
+//
+// A part's patch: the machine changes to it on the part's first tick, so the part sounds
+// exactly as it would with the panel on that patch all along - and a part on the panel's own
+// goes back to it. Rendered for the Mz7, the Mz106 and, with its disks, the Mz950.
+//
+void songPatches()
+{
+    std::printf("\nparts on patches of their own\n");
+
+    struct Case { int machine; int panel, other; const char* name; };
+    std::vector<Case> cases = { { Rack::M7, 0, 4, "Mz7" }, { Rack::M106, 0, 40, "Mz106" } };   // the Mz7's ORGAN 1: no tail into the next bar
+#ifdef MZ950_DISKS
+    cases.push_back({ Rack::M950, 0, 1, "Mz950" });
+#endif
+
+    for (const auto& c : cases)
+    {
+        // two bars: A on `program`, B on the panel's own
+        auto render = [&] (int panel, int programA, bool withB, bool noteInA = true)
+        {
+            Rack r;
+#ifdef MZ950_DISKS
+            std::string error;
+            if (c.machine == Rack::M950) r.mz950.loadDisk(std::string(MZ950_DISKS) + "/WHALES.hfe", error);   // WHALES, and SLOW WHALE: the same calls, slow in
+#endif
+            r.prepare(48000, 512);
+            if (c.machine == Rack::M7)   r.mz7.selectProgram(panel);
+            if (c.machine == Rack::M106) r.mz106.selectProgram(panel);
+            if (c.machine == Rack::M950) { r.mz950.selectProgram(panel); r.mz950.prepareProgram(c.other); }
+            std::vector<float> l(512), rr(512);
+            for (int i = 0; i < 2; ++i) { r.render(l.data(), rr.data(), 512); r.mz950.service(); }
+            r.tempo = 120;
+            r.mode = Mode::Song;
+            for (int m = 0; m < Rack::channels; ++m) r.channel[m].mute = m != c.machine;
+
+            Song s = defaultSong();
+            for (int b = 0; b < (withB ? 2 : 1); ++b)
+            {
+                // B three bars on, the tails of A's note long gone
+                Part p;
+                p.start = b * 3 * ticksPerBar;
+                p.length = ticksPerBar;
+                p.program = b == 0 ? programA : -1;
+                Note n;
+                n.tick = 0;
+                n.length = ticksPerQuarter * 2;
+                n.pitch = 60;
+                if (b == 1 || noteInA) p.notes.push_back(n);
+                s.tracks[(size_t) c.machine].parts.push_back(p);
+            }
+            s.right = 4 * ticksPerBar;
+
+            std::vector<float> out;
+            bounce(r, s, 48000.0, 0.0, [&] (const float* a, const float* b, int n, double)
+            {
+                for (int i = 0; i < n; ++i) out.push_back(a[i] + b[i]);
+                return true;
+            });
+            return out;
+        };
+
+        const auto song = render(c.panel, c.other, true);       // A on the other, B the panel's
+        const auto onOther = render(c.other, -1, false);         // the panel on the other all along
+        const auto onPanel = render(c.panel, -1, true);          // no patches at all
+        const auto otherAll = render(c.other, -1, true);         // the panel on the other, both parts
+        const size_t bar = (size_t) (48000 * 2);                  // 120 bpm
+
+        // How far apart two renders are over a stretch: their loudness, 10 ms at a time, compared.
+        // Not the samples: a DX7's oscillators run free, so a voice that last played another
+        // patch starts this one at another phase; LFOs - the Mz7's vibrato, the 106's chorus -
+        // run free too; and a 106 smooths a change of slider over a few milliseconds through
+        // the sample-and-holds, as the machine does. The shape of the note is the patch.
+        auto apartBy = [] (const std::vector<float>& a, const std::vector<float>& b, size_t from, size_t to)
+        {
+            auto level = [] (const std::vector<float>& x, size_t at)
+            {
+                double e = 0;
+                for (size_t i = at; i < at + 480 && i < x.size(); ++i) e += (double) x[i] * x[i];
+                return std::sqrt(e / 480.0);
+            };
+            double sum = 0; size_t n = 0;
+            for (size_t at = from; at + 480 <= to && at + 480 <= a.size() && at + 480 <= b.size(); at += 480, ++n)
+                sum += std::pow(level(a, at) - level(b, at), 2.0);
+            return std::sqrt(sum / (double) std::max<size_t>(1, n));
+        };
+        const size_t settle = 2400;
+        const double first = apartBy(song, onOther, settle, bar), firstApart = apartBy(onOther, onPanel, settle, bar);
+        // B's note with A silent: a DX7 voice struck again starts its envelopes from where the
+        // last patch left them, as the machine's do, which is the voice's history, not its patch
+        const auto songB = render(c.panel, c.other, true, false);
+        const double second = apartBy(songB, onPanel, 3 * bar + settle, 4 * bar), secondApart = apartBy(onPanel, otherAll, 3 * bar + settle, 4 * bar);
+
+        check(firstApart > 1.0e-3 && first < 0.2 * firstApart,
+              fmt("the %s plays a part on its own patch from its first note", c.name).c_str(),
+              fmt("%.4f from it, the two patches %.4f apart", first, firstApart));
+        check(second < 0.2 * secondApart, "and the next part on the panel's own again",
+              fmt("%.4f from it, the two patches %.4f apart", second, secondApart));
+    }
+}
+
+//
+// The Mz106's MORPH: at 0 the patch, at 1 the MORPH TO patch, exactly - sliders and switches
+// - and half way neither.
+//
+void morph()
+{
+    std::printf("\nthe Mz106's MORPH\n");
+
+    // a chord held a second, on patch `a`, morphed `amount` of the way to `b`
+    auto render = [] (int a, int b, float amount)
+    {
+        Rack r;
+        r.prepare(48000, 512);
+        r.mz106.selectProgram(a);
+        r.mz106.setMorphTarget(b);
+        r.mz106.knobs.set(r.mz106.knobs.indexOf("morph"), amount);
+        for (int m = 0; m < Rack::channels; ++m) r.channel[m].mute = m != Rack::M106;
+        std::vector<float> l(512), rr(512), out;
+        r.render(l.data(), rr.data(), 512);   // the patch and the morph in
+        for (int k : { 60, 64, 67 }) r.mz106.songNoteOn(k, 100);
+        for (int i = 0; i < 94; ++i)
+        {
+            r.render(l.data(), rr.data(), 512);
+            for (int s = 0; s < 512; ++s) out.push_back(l[(size_t) s] + rr[(size_t) s]);
+        }
+        return out;
+    };
+    auto apart = [] (const std::vector<float>& x, const std::vector<float>& y)
+    {
+        double worst = 0;
+        for (size_t i = 0; i < x.size() && i < y.size(); ++i) worst = std::max(worst, (double) std::fabs(x[i] - y[i]));
+        return worst;
+    };
+
+    // A21 JUNO BRASS to A41 WARM PAD: other sliders and other switches
+    const auto onA = render(8, -1, 0.0f), onB = render(24, -1, 0.0f);
+    const auto at0 = render(8, 24, 0.0f), at1 = render(8, 24, 1.0f), half = render(8, 24, 0.5f);
+    check(apart(onA, onB) > 1.0e-2 && apart(at0, onA) < 1.0e-6, "at 0 it is the patch", fmt("%.7f off", apart(at0, onA)));
+    check(apart(at1, onB) < 1.0e-6, "at 1 the MORPH TO patch, switches and all", fmt("%.7f off", apart(at1, onB)));
+    check(apart(half, onA) > 1.0e-3 && apart(half, onB) > 1.0e-3, "and half way, neither",
+          fmt("%.4f from the one, %.4f from the other", apart(half, onA), apart(half, onB)));
+}
+
+//
+// A second of a machine: a whole machine of its own, on its own channel. Each second, alone,
+// plays a part exactly as its first does alone - and out of the rack, as they start, the
+// seconds cost nothing and sound nothing.
+//
+void seconds()
+{
+    std::printf("\nthe second of each machine\n");
+
+    // bank A's first groove on one slot, alone in the rack, for four bars
+    auto render = [] (int slot)
+    {
+        Rack r;
+        r.prepare(48000, 512);
+        writeGrooves(r);
+        voiceForAcid(r);
+        r.tempo = 120;
+        r.mode = Mode::Song;
+        for (int m = 0; m < Rack::channels; ++m) r.channel[m].inRack = m == slot;
+
+        Song s = defaultSong();
+        const int first = Rack::typeOf(slot);
+        Part p = partFromPattern(r, first, 0, 4);   // the first's pattern, played on this slot
+        if (p.notes.empty())                         // the Mz7 and Mz106 have none in the factory banks
+        {
+            for (int b = 0; b < 4; ++b)
+                for (int k : { 60, 64, 67 })
+                {
+                    Note n;
+                    n.tick = b * ticksPerBar;
+                    n.length = ticksPerBar / 2;
+                    n.pitch = k;
+                    p.notes.push_back(n);
+                }
+            p.length = 4 * ticksPerBar;
+            p.sortNotes();
+        }
+        s.tracks[(size_t) slot].parts.push_back(p);
+        s.right = p.length;
+
+        // the second's knobs and fader as the first's
+        r.visit(slot, [&r, first] (auto& x)
+        {
+            r.visit(first, [&x] (auto& y)
+            {
+                if constexpr (std::is_same_v<std::decay_t<decltype(x)>, std::decay_t<decltype(y)>>)
+                    for (int i = 0; i < x.knobs.size(); ++i) x.knobs.set(i, y.knobs.get(i));
+            });
+        });
+        if (slot == Rack::M106 + Rack::types) r.mz106b.selectProgram(r.mz106.program());   // and the patch
+        r.channel[slot].level = r.channel[first].level.load();
+        r.channel[slot].pan = r.channel[first].pan.load();
+        r.channel[slot].dist = r.channel[first].dist.load();
+        r.channel[slot].comp = r.channel[first].comp.load();
+        r.channel[slot].delay = r.channel[first].delay.load();
+        r.channel[slot].reverb = r.channel[first].reverb.load();
+
+        std::vector<float> out;
+        bounce(r, s, 48000.0, 0.0, [&] (const float* a, const float* b, int n, double)
+        {
+            for (int i = 0; i < n; ++i) out.push_back(a[i] + b[i]);
+            return true;
+        });
+        return out;
+    };
+
+    for (int t = 0; t < Rack::types; ++t)
+    {
+        if (t == Rack::M950) continue;   // a 950 plays from a disk; the rest of it is the same code
+        const auto first = render(t), second = render(t + Rack::types);
+        double worst = 0, peak = 0;
+        for (size_t i = 0; i < first.size() && i < second.size(); ++i)
+        {
+            worst = std::max(worst, (double) std::fabs(first[i] - second[i]));
+            peak = std::max(peak, (double) std::fabs(first[i]));
+        }
+        check(first.size() == second.size() && peak > 0.01 && worst < 1.0e-6,
+              fmt("the second %s plays as the first", machineName(t)).c_str(), fmt("%.7f apart, of %.3f", worst, peak));
+    }
+
+    Rack r;
+    int in = 0;
+    for (int m = 0; m < Rack::channels; ++m) in += r.channel[m].inRack.load() ? 1 : 0;
+    check(in == Rack::types, "a new rack has the first of each in it, and no seconds", fmt("%d in", in));
+}
+
 // LIMIT: whatever goes in, nothing over the ceiling comes out; what was under it comes out
 // as it went in, only later; and switched off, it only delays.
 void limit()
@@ -1906,6 +2181,10 @@ int main()
     bounces();
     demo();
     ambientDemo();
+    leftOut();
+    songPatches();
+    morph();
+    seconds();
     song();
     stops();
     recording();

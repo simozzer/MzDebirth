@@ -22,6 +22,7 @@ const std::vector<Control<JunoSettings>>& controls106()
         { "attack",  "A",       -5, 5, &S::attack },
         { "release", "R",       -5, 5, &S::release },
         { "chorus",  "CHORUS",   0, 3, nullptr, &S::chorus, "PATCH|OFF|I|II" },
+        { "morph",   "MORPH",    0, 1, &S::morph },
         { "volume",  "VOLUME", -20, 12, &S::volume },
     };
     return table;
@@ -41,6 +42,8 @@ void Mz106::loadFactory()
     path.clear();
     factory = true;
     programIndex = -1;
+    sendBank();
+    setMorphTarget(morphIndex);   // the same number in the new bank
     selectProgram(0);
 }
 
@@ -81,6 +84,8 @@ void Mz106::setBank(const j106::Bank& b, const std::string& title)
     if (factory) name = "FACTORY";
 
     programIndex = -1;
+    sendBank();
+    setMorphTarget(morphIndex);   // the same number in the new bank
     selectProgram(0);
 }
 
@@ -108,7 +113,29 @@ void Mz106::send(const j106::Patch& p)
 {
     std::lock_guard<std::mutex> g(lock);
     pending = p;
+    pending.name.clear();   // the audio thread copies it: no string to allocate
     pendingNew = true;
+}
+
+void Mz106::sendBank()
+{
+    std::lock_guard<std::mutex> g(lock);
+    for (size_t i = 0; i < pendingBank.size(); ++i)
+        pendingBank[i] = { memory.patches[i].slider, memory.patches[i].sw1, memory.patches[i].sw2 };
+    pendingBankNew = true;
+}
+
+void Mz106::setMorphTarget(int index)
+{
+    morphIndex = index >= 0 && index < (int) memory.patches.size() ? index : -1;
+    std::lock_guard<std::mutex> g(lock);
+    if (morphIndex >= 0)
+    {
+        const auto& p = memory.patches[(size_t) morphIndex];
+        pendingMorph = { p.slider, p.sw1, p.sw2 };
+    }
+    pendingMorphOn = morphIndex >= 0;
+    pendingMorphNew = true;
 }
 
 //============================================================================== playing
@@ -130,14 +157,57 @@ void Mz106::update()
         std::unique_lock<std::mutex> g(lock, std::try_to_lock);
         if (g.owns_lock() && pendingNew)
         {
-            patch = pending;
+            patch = homePatch = pending;
             pendingNew = false;
+        }
+        if (g.owns_lock() && pendingBankNew)
+        {
+            audioBank = pendingBank;
+            pendingBankNew = false;
+        }
+        if (g.owns_lock() && pendingMorphNew)
+        {
+            morphTo = pendingMorph;
+            morphOn = pendingMorphOn;
+            pendingMorphNew = false;
         }
     }
 
-    const JunoSettings k = knobs.read();
+    knobsNow = knobs.read();
+    apply();
+}
+
+void Mz106::songProgram(int index)
+{
+    if (index >= 0 && index < (int) audioBank.size())
+    {
+        const Sound& s = audioBank[(size_t) index];
+        patch.slider = s.slider;
+        patch.sw1 = s.sw1;
+        patch.sw2 = s.sw2;
+    }
+    else
+        patch = homePatch;
+    apply();
+}
+
+void Mz106::apply()
+{
+    const JunoSettings& k = knobsNow;
     j106::Settings s;
-    patch.applyTo(s);
+
+    // MORPH: the sliders part of the way to the other patch's, as the 106's seven bits step
+    // them; the switches - waveforms, range, chorus, HPF, the rest - at the half
+    if (morphOn && k.morph > 0.0f)
+    {
+        j106::Patch m = patch;
+        for (size_t i = 0; i < m.slider.size(); ++i)
+            m.slider[i] = (uint8_t) std::lround(patch.slider[i] + (morphTo.slider[i] - patch.slider[i]) * k.morph);
+        if (k.morph >= 0.5f) { m.sw1 = morphTo.sw1; m.sw2 = morphTo.sw2; }
+        m.applyTo(s);
+    }
+    else
+        patch.applyTo(s);
 
     auto nudge = [] (float v, float by) { return std::clamp(v + by, 0.0f, 10.0f); };
     s.cutoff  = nudge(s.cutoff, k.freq);

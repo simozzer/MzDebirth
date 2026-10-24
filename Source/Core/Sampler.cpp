@@ -33,6 +33,14 @@ bool Mz950::loadDisk(const std::string& p, std::string& error)
     auto d = std::make_unique<s950::Disk>();
     if (! d->loadFile(p, error)) return false;
 
+    {
+        // the last disk's patches, kept a while yet: the engine may still be letting one go
+        std::lock_guard<std::mutex> g(lock);
+        for (auto& b : built) if (b != nullptr) graveyard.push_back(std::move(b));
+        built.clear();
+        graveyardTicks = 0;
+    }
+
     disk = std::move(d);
     path = p;
     programIndex = -1;
@@ -81,22 +89,62 @@ std::vector<std::string> Mz950::programNames() const
     return names;
 }
 
-bool Mz950::selectProgram(int index)
+s950::PatchPtr Mz950::build(int index)
 {
+    if (index >= 0 && index < (int) built.size() && built[(size_t) index] != nullptr) return built[(size_t) index];
+
     const auto* e = entry(index);
-    if (e == nullptr) return false;
+    if (e == nullptr) return nullptr;
 
     // reusing the samples the last patch already decoded, where they are the same
-    auto built = disk->buildPatch(*e, sameDisk ? patch.get() : nullptr);
-    if (built == nullptr || built->keygroups.empty()) return false;
-
-    programIndex = index;
+    auto p = disk->buildPatch(*e, sameDisk ? patch.get() : nullptr);
+    if (p == nullptr || p->keygroups.empty()) return nullptr;
     sameDisk = true;
-    patch = built;
 
     std::lock_guard<std::mutex> g(lock);
+    if ((int) built.size() <= index) built.resize((size_t) index + 1);
+    built[(size_t) index] = p;
+    return p;
+}
+
+bool Mz950::selectProgram(int index)
+{
+    auto p = build(index);
+    if (p == nullptr) return false;
+
+    programIndex = index;
+    std::lock_guard<std::mutex> g(lock);
+    patch = p;
     owed = engine == nullptr || ! engine->trySetPatch(patch);
     return true;
+}
+
+void Mz950::prepareProgram(int index)
+{
+    build(index);
+}
+
+//
+// The audio thread's side of a song's programme change: the patch built ahead, or the panel's,
+// handed to the engine if the lock and the engine's exchange are free - otherwise wanted
+// still, and tried again at the top of the next block.
+//
+void Mz950::songProgram(int index)
+{
+    wantProgram = index;
+    trySongProgram();
+}
+
+void Mz950::trySongProgram()
+{
+    if (wantProgram < -1 || engine == nullptr) return;
+
+    std::unique_lock<std::mutex> g(lock, std::try_to_lock);
+    if (! g.owns_lock()) return;
+
+    const bool ready = wantProgram >= 0 && wantProgram < (int) built.size() && built[(size_t) wantProgram] != nullptr;
+    const s950::PatchPtr& p = ready ? built[(size_t) wantProgram] : patch;
+    if (p == nullptr || engine->trySetPatch(p)) wantProgram = -2;
 }
 
 std::vector<Mz950::Span> Mz950::keySpans() const
@@ -113,6 +161,10 @@ std::vector<Mz950::Span> Mz950::keySpans() const
 void Mz950::service()
 {
     std::lock_guard<std::mutex> g(lock);
+
+    // the last disk's patches, two seconds on: long enough for the engine to have let go
+    if (! graveyard.empty() && ++graveyardTicks > 40) graveyard.clear();
+
     if (engine == nullptr) return;
 
     engine->collectRetiredPatch();
@@ -134,6 +186,8 @@ void Mz950::prepare(double sampleRate)
 void Mz950::update(bool running, double quarters, double bpm)
 {
     if (engine == nullptr) return;
+
+    trySongProgram();   // a song's change the last block couldn't make
 
     const SamplerSettings s = knobs.read();
     auto& t = engine->trims;

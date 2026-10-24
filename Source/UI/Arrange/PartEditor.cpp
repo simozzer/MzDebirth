@@ -28,21 +28,21 @@ namespace
 
     bool isBlack(int pitch) { const int k = pitch % 12; return k == 1 || k == 3 || k == 6 || k == 8 || k == 10; }
 
-    int drumVoices(int machine) { return machine == Rack::M808 ? Mz808::voices : Mz909::voices; }
+    int drumVoices(int machine) { return Rack::typeOf(machine) == Rack::M808 ? Mz808::voices : Mz909::voices; }
 
     const char* drumName(int machine, int voice)
     {
-        return machine == Rack::M808 ? tr808::voiceInfo(voice).name : tr909::voiceInfo(voice).name;
+        return Rack::typeOf(machine) == Rack::M808 ? tr808::voiceInfo(voice).name : tr909::voiceInfo(voice).name;
     }
 
     int drumNote(int machine, int voice)
     {
-        return machine == Rack::M808 ? tr808::voiceInfo(voice).note : tr909::voiceInfo(voice).note;
+        return Rack::typeOf(machine) == Rack::M808 ? tr808::voiceInfo(voice).note : tr909::voiceInfo(voice).note;
     }
 
     int drumVoice(int machine, int note)
     {
-        return machine == Rack::M808 ? tr808::voiceForNote(note) : tr909::voiceForNote(note);
+        return Rack::typeOf(machine) == Rack::M808 ? tr808::voiceForNote(note) : tr909::voiceForNote(note);
     }
 }
 
@@ -400,10 +400,11 @@ void PartEditor::paint(juce::Graphics& g)
     }
 
     // the 950: the samples its programme plays, named on their keys
-    if (! drums && machine == Rack::M950)
+    if (! drums && Rack::typeOf(machine) == Rack::M950)
     {
         g.setFont(fonts::bold(8.5f));
-        for (const auto& span : state.processor.rack.mz950.keySpans())
+        const auto& sampler = machine == Rack::M950 ? state.processor.rack.mz950 : state.processor.rack.mz950b;
+        for (const auto& span : sampler.keySpans())
         {
             const float y = yOfRow(rowOfPitch(span.high));
             const float h = (float) ((span.high - span.low + 1) * rowHeight());

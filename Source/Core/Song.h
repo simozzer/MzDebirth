@@ -30,6 +30,9 @@ constexpr int ticksPerBar     = ticksPerQuarter * 4;
 namespace MachineKind { enum { Mono, Drums, Notes }; }
 int machineKind(int machine);
 
+// whether a part on the machine can choose its patch: the Mz950, the Mz7 and the Mz106
+bool takesPatches(int machine);
+
 // The machines' names, in rack order, as saved and as the track list shows them.
 const char* machineName(int machine);
 
@@ -57,6 +60,11 @@ struct Part
     // What repeats when the part is stretched, in ticks from its start: 0 until it has been,
     // when the whole part is the loop. See resizePart.
     int loop = 0;
+
+    // The patch it plays on, by its number on the machine - a Mz950 programme, an Mz7 voice, an
+    // Mz106 patch: -1 for the one picked on the machine's panel. The machine changes to it as
+    // the part starts. The other machines have no patches, and take no notice.
+    int program = -1;
 
     int end() const { return start + length; }
     void sortNotes();
@@ -176,6 +184,7 @@ struct SongEvent
     uint8_t velocity;
     bool slide;            // a mono line: slides on from the note sounding
     bool shuffle;          // the track swings
+    bool program = false;  // not a note: the machine changes patch, to `key` - -1 its panel's own
 };
 
 // a lane of automation as the audio thread plays it: its control found on the rack
@@ -194,6 +203,10 @@ struct Playback
     int left = 0, right = 0;
     bool cycle = false;
     int cursor = 0;                  // where PLAY starts from
+
+    // The patch a machine is on at a tick, as the song left it: the last change at or before
+    // it - -1 its panel's own - or -2 if the song changes none of its patches.
+    int programAt(int machine, int tick) const;
 };
 
 // the song as the audio thread plays it; given the rack, its automation too
