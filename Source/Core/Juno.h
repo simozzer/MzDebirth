@@ -94,6 +94,12 @@ public:
 
     int activeVoices() const { return engine.activeVoices(); }
 
+    // MIDI in: the bender, -8192 to 8191; the mod wheel, as the bender pushed away; the
+    // sustain pedal, as HOLD
+    void midiBend(int v)        { engine.bend((float) v / 8192.0f); }
+    void midiWheel(int v)       { engine.modLever((float) v / 127.0f); }
+    void midiSustain(bool down) { engine.hold(down); }
+
     // a part starting on a patch of its own, by number - -1 the one picked on the panel. At
     // once, so the part's first note plays on it.
     void songProgram(int index);

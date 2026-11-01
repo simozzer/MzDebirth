@@ -84,6 +84,11 @@ public:
 
     int activeVoices() const { return voicesSounding.load(std::memory_order_relaxed); }
 
+    // MIDI in: the pitch wheel, -8192 to 8191, and a sustain pedal
+    void midiBend(int v)        { engine.pitchBend(v); }
+    void midiWheel(int)         {}
+    void midiSustain(bool down) { engine.sustain(down); }
+
     // a part starting on a voice of its own, by number - -1 the one picked on the panel. At
     // once, so the part's first note plays on it.
     void songProgram(int index);

@@ -2041,6 +2041,70 @@ void seconds()
     check(in == Rack::types, "a new rack has the first of each in it, and no seconds", fmt("%d in", in));
 }
 
+//
+// MIDI in: a key plays the machine with its MIDI light lit, on the very sample it arrives on;
+// a drum machine's keys are its instruments; a machine out of the rack hears nothing.
+//
+void midiIn()
+{
+    std::printf("\nMIDI in\n");
+
+    // a note on the Mz7, its note-on `at` samples into the first block; the output from there
+    auto render = [] (int machine, int at, uint8_t key, bool inRack = true)
+    {
+        Rack r;
+        r.prepare(48000, 512);
+        r.midiMachine = machine;
+        r.channel[machine].inRack = inRack;
+        std::vector<float> l(512), rr(512), out;
+        r.render(l.data(), rr.data(), 512);   // the voice in
+        for (int b = 0; b < 20; ++b)
+        {
+            Rack::MidiIn on { at, 0x90, key, 100 };
+            r.render(l.data(), rr.data(), 512, &on, b == 0 ? 1 : 0);
+            for (int i = 0; i < 512; ++i) out.push_back(l[(size_t) i] + rr[(size_t) i]);
+        }
+        return out;
+    };
+
+    // Where it starts, and its shape, 10 ms at a time - on the 808, whose kick starts on the
+    // sample it is struck: a DX7 starts its notes on blocks of its own, and runs its
+    // oscillators free, so where one starts says more about it than about the timing.
+    const uint8_t kickKey = (uint8_t) tr808::voiceInfo(tr808::Voice::BD).note;
+    const auto atStart = render(Rack::M808, 0, kickKey), at100 = render(Rack::M808, 100, kickKey);
+    // where each first sounds - the engine takes a moment of its own, the same either way
+    auto start = [] (const std::vector<float>& x)
+    {
+        for (size_t i = 0; i < x.size(); ++i) if (x[i] != 0.0f) return i;
+        return x.size();
+    };
+    const size_t first = start(at100), firstAtStart = start(atStart);
+    auto level = [] (const std::vector<float>& x, size_t from)
+    {
+        double e = 0;
+        for (size_t i = from; i < from + 480 && i < x.size(); ++i) e += (double) x[i] * x[i];
+        return std::sqrt(e / 480.0);
+    };
+    double worst = 0, loudest = 0;
+    for (size_t w = 0; w + 100 + 480 < at100.size(); w += 480)
+    {
+        worst = std::max(worst, std::fabs(level(at100, w + 100) - level(atStart, w)));
+        loudest = std::max(loudest, level(atStart, w));
+    }
+    check(first == firstAtStart + 100 && loudest > 0.01 && worst < 0.05 * loudest, "a key plays its machine on the sample it arrives on",
+          fmt("first sound 100 samples on, at %zu after %zu; its shape %.5f off, of %.4f", first, firstAtStart, worst, loudest));
+
+    // the 808's kick, on its General MIDI key
+    double kick = 0;
+    for (float v : render(Rack::M808, 0, (uint8_t) tr808::voiceInfo(tr808::Voice::BD).note)) kick = std::max(kick, (double) std::fabs(v));
+    check(kick > 0.1, "a drum machine's keys strike its instruments", fmt("the kick peaks at %.2f", kick));
+
+    // and the Mz7 out of the rack hears nothing
+    double out = 0;
+    for (float v : render(Rack::M7, 0, 60, false)) out = std::max(out, (double) std::fabs(v));
+    check(out == 0.0, "a machine out of the rack hears nothing", fmt("%.6f", out));
+}
+
 // LIMIT: whatever goes in, nothing over the ceiling comes out; what was under it comes out
 // as it went in, only later; and switched off, it only delays.
 void limit()
@@ -2185,6 +2249,7 @@ int main()
     songPatches();
     morph();
     seconds();
+    midiIn();
     song();
     stops();
     recording();

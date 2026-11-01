@@ -158,6 +158,8 @@ Rack::Rack()
       mz808b(controls808()),
       mz909b(controls909())
 {
+    std::fill(std::begin(keyMachine), std::end(keyMachine), (int8_t) -1);   // no key held
+
     // the first of each in the rack, the seconds out until they're wanted
     for (int m = 0; m < channels; ++m)
     {
@@ -371,8 +373,15 @@ Rack::~Rack()
     delete retired.exchange(nullptr);
 }
 
-void Rack::render(float* left, float* right, int n)
+void Rack::render(float* left, float* right, int n, const MidiIn* midi, int count)
 {
+    // the keyboard's messages, in order, each played on its sample as the blocks go by
+    midiCount = 0;
+    for (int i = 0; i < count && midiCount < maxMidi; ++i) midiIn[midiCount++] = midi[i];
+    std::stable_sort(midiIn, midiIn + midiCount, [] (const MidiIn& a, const MidiIn& b) { return a.at < b.at; });
+    midiNext = 0;
+    midiBase = 0;
+
     while (n > 0)
     {
         const int chunk = beginBlock(n < blockSize ? n : blockSize);
@@ -382,7 +391,75 @@ void Rack::render(float* left, float* right, int n)
         left += chunk;
         right += chunk;
         n -= chunk;
+        midiBase += chunk;
     }
+
+    for (; midiNext < midiCount; ++midiNext) playMidi(midiIn[midiNext]);   // any past the end, now
+}
+
+//
+// A message from the keyboard, to the machine whose MIDI light is lit: a mono synth plays the
+// last key held, sliding from one to the next as a 303 does played legato; a drum machine
+// strikes the instrument on its key, by the General MIDI drum map; the rest play chords.
+// Pitch bend, the mod wheel and a sustain pedal reach the machines that have them.
+//
+void Rack::playMidi(const MidiIn& e)
+{
+    const int type = e.status & 0xF0;
+    const bool on = type == 0x90 && e.data2 > 0, off = type == 0x80 || (type == 0x90 && e.data2 == 0);
+
+    // a note-off goes where its note-on went, wherever the light is now
+    int m = midiMachine.load(std::memory_order_relaxed);
+    if (off && e.data1 < 128 && keyMachine[e.data1] >= 0) m = keyMachine[e.data1];
+    if (m < 0 || m >= channels || ! channel[m].inRack.load()) return;
+
+    const int note = e.data1 & 127, velocity = e.data2 & 127;
+    if (on)  keyMachine[note] = (int8_t) m;
+    if (off) keyMachine[note] = -1;
+
+    visit(m, [&] (auto& x)
+    {
+        using T = std::decay_t<decltype(x)>;
+        if constexpr (isMono<T>)
+        {
+            const int vel = velocity >= 100 ? T::accentVelocity : 100;   // hard, accented
+            if (on)
+            {
+                const bool slide = monoCount > 0;
+                if (monoCount < 16) monoKeys[monoCount++] = note;
+                x.songNoteOn(note, vel, slide);
+            }
+            else if (off)
+            {
+                const bool wasTop = monoCount > 0 && monoKeys[monoCount - 1] == note;
+                int kept = 0;
+                for (int i = 0; i < monoCount; ++i) if (monoKeys[i] != note) monoKeys[kept++] = monoKeys[i];
+                monoCount = kept;
+                if (! wasTop) return;
+                if (monoCount > 0) x.songNoteOn(monoKeys[monoCount - 1], 100, true);   // back to the note still held
+                else               x.songNoteOff(note);
+            }
+        }
+        else if constexpr (isDrums<T>)
+        {
+            const int voice = std::is_same_v<T, Mz808> ? tr808::voiceForNote(note) : tr909::voiceForNote(note);
+            if (on && voice >= 0) x.hit(voice, velocity >= 100 ? T::accentVelocity : 100);   // hard, accented
+        }
+        else
+        {
+            if (on)       x.songNoteOn(note, velocity);
+            else if (off) x.songNoteOff(note);
+            else if (type == 0xE0) x.midiBend(((e.data2 & 127) << 7 | (e.data1 & 127)) - 8192);
+            else if (type == 0xB0 && e.data1 == 1)
+            {
+                if constexpr (std::is_same_v<T, Mz7>)   // the Mz7's MOD knob, so the panel follows it
+                    x.knobs.set(x.knobs.indexOf("wheel"), (float) velocity);
+                else
+                    x.midiWheel(velocity);
+            }
+            else if (type == 0xB0 && e.data1 == 64) x.midiSustain(velocity >= 64);
+        }
+    });
 }
 
 //============================================================================== the song
@@ -671,6 +748,19 @@ void Rack::endBlock()
 }
 
 void Rack::renderMachines(int from, int to)
+{
+    // the keyboard's messages in this stretch, each on its own sample
+    while (midiNext < midiCount && midiIn[midiNext].at - midiBase < to)
+    {
+        const int at = std::max(from, midiIn[midiNext].at - midiBase);
+        renderSpan(from, at);
+        playMidi(midiIn[midiNext++]);
+        from = at;
+    }
+    renderSpan(from, to);
+}
+
+void Rack::renderSpan(int from, int to)
 {
     const int n = to - from;
     if (n <= 0) return;

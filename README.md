@@ -251,6 +251,28 @@ patterns, knobs, patches and channel, and sits under its first in the rack and t
 window. A new rack has the first of each and no seconds. The demo songs put in the machines
 they play, and the rack saves which are in.
 
+**MIDI in.** Plug in a keyboard and pick it under **Options**, *Audio/MIDI Settings*. Then
+click a machine's name plate, at the top of its mixer strip. It lights green, and the keyboard
+plays that machine, over whatever the patterns or the song are playing. Each note lands on
+the sample it arrives on. One machine at a time: click another plate to move it, or the lit
+one for none.
+- **Mz303 and Mz101:** a mono synth plays the last key held. Playing legato slides from note
+  to note, as a 303 does, and letting go of a key falls back to the one still held. A hard
+  key, velocity 100 or more, is an accent.
+- **Mz808 and Mz909:** a drum machine's keys are its instruments, by the General MIDI drum map
+  its patterns use. C1 is the bass drum, D1 the snare.
+- **Mz950, Mz7 and Mz106:** these play chords. Pitch bend reaches all three. The mod wheel
+  turns the Mz7's MOD knob and the Mz106's mod lever, and moves the Mz950's wheel. A sustain
+  pedal holds the Mz7's notes, and works the Mz106's HOLD.
+
+A key is heard a buffer or two after it is played, so the buffer is what makes a keyboard
+feel tight or loose. On Windows, *Windows Audio* holds to about ten milliseconds whatever is
+asked. An audio interface with its own driver - pick **ASIO** in *Audio/MIDI Settings*, then
+its driver, at 64 to 256 samples - gets that down to two or three. Without one, try *Windows
+Audio (Low Latency Mode)*, which many built-in sound chips run at shorter buffers, and which a
+first run picks for itself. On a Mac, Core Audio takes any buffer; on Linux, pick a shorter one
+under ALSA, or use JACK.
+
 - **Mz303** - the full panel, and a piano-roll step editor with the 303's UP, DOWN, ACCENT
   and SLIDE on every step. Click a cell for a note, click it again for a rest, drag along
   to keep going. A slide holds the note over into the next step and glides to it.

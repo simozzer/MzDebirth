@@ -106,7 +106,15 @@ public:
     ~Rack();
 
     void prepare(double sampleRate, int maxBlock);
-    void render(float* left, float* right, int n);
+    //
+    // MIDI IN, from a keyboard: plays the machine picked for it - its MIDI light - on the
+    // sample each message arrives on, over whatever the patterns or the song are playing. A
+    // message is its sample in the block and its three bytes; render takes them in order.
+    //
+    struct MidiIn { int at; uint8_t status, data1, data2; };
+    std::atomic<int> midiMachine { -1 };   // the machine the keyboard plays; -1 none
+
+    void render(float* left, float* right, int n, const MidiIn* midi = nullptr, int midiCount = 0);
 
     // the transport
     std::atomic<bool>  playing { false };
@@ -273,7 +281,18 @@ private:
     void applyLive();           // and in SONG mode, each machine's pattern or its track
     void applyAutomation();     // the song's automation, where the song is, once a block
     void renderBlock(float* left, float* right, int n);
-    void renderMachines(int from, int to);
+    void renderMachines(int from, int to);   // MIDI in on its samples between
+    void renderSpan(int from, int to);
+    void playMidi(const MidiIn&);
+
+    // the keyboard's messages for this render, and how far through them it is; which machine
+    // each key went to, so its note-off follows it if the MIDI light moves; and the keys held
+    // on a mono synth, the last of them sounding, as a monophonic keyboard plays
+    static constexpr int maxMidi = 512;
+    MidiIn midiIn[maxMidi];
+    int midiCount = 0, midiNext = 0, midiBase = 0;
+    int8_t keyMachine[128];
+    int monoKeys[16] {}, monoCount = 0;
     void renderPcfEnvelope(int n);
 
     Clock clock;

@@ -30,7 +30,7 @@ public:
     bool hasEditor() const override { return true; }
 
     const juce::String getName() const override { return "MzDebirth"; }
-    bool acceptsMidi() const override  { return false; }
+    bool acceptsMidi() const override  { return true; }   // a keyboard, to play the machine with its MIDI light lit
     bool producesMidi() const override { return false; }
     double getTailLengthSeconds() const override { return 0.0; }
 

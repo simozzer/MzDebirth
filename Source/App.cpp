@@ -75,12 +75,66 @@ namespace
 
         void initialise(const juce::String&) override
         {
+            const bool firstRun = properties.getUserSettings()->getXmlValue("audioSetup") == nullptr;
+
             window = std::make_unique<Window>(getApplicationName(),
                 juce::LookAndFeel::getDefaultLookAndFeel().findColour(juce::ResizableWindow::backgroundColourId),
                 std::make_unique<juce::StandalonePluginHolder>(properties.getUserSettings(), false, preferredDefaultDevice(),
                                                                nullptr, juce::Array<juce::StandalonePluginHolder::PluginInOuts>(),
                                                                false));
+            if (firstRun) shortenBuffer(window->pluginHolder->deviceManager);
             window->setVisible(true);
+        }
+
+        //
+        // A KEYBOARD'S LATENCY
+        // A note played waits a buffer to be heard, and the drivers' defaults are long ones - ten
+        // milliseconds, felt under the fingers. On a first run, with no audio setup saved, the
+        // buffer is the one nearest 256 samples the device offers; never longer than the default,
+        // and never over a buffer the player has chosen. Not on Linux: a Pi's HDMI wants its own.
+        //
+        // Windows' shared mode keeps its ten milliseconds whatever is asked, so on Windows the
+        // same output is opened in its Low Latency Mode - still shared with other programs -
+        // unless that will not open, when it stays as it was.
+        //
+        static void shortenBuffer(juce::AudioDeviceManager& devices)
+        {
+           #if ! (JUCE_LINUX || JUCE_BSD)
+           #if JUCE_WINDOWS
+            const auto shared = devices.getCurrentAudioDeviceType();
+            if (shared == "Windows Audio")
+            {
+                const auto output = devices.getAudioDeviceSetup().outputDeviceName;
+                devices.setCurrentAudioDeviceType("Windows Audio (Low Latency Mode)", true);
+
+                auto setup = devices.getAudioDeviceSetup();
+                if (output.isNotEmpty() && setup.outputDeviceName != output)
+                {
+                    setup.outputDeviceName = output;   // the same speakers, if this mode has them
+                    devices.setAudioDeviceSetup(setup, true);
+                }
+                if (devices.getCurrentAudioDevice() == nullptr)
+                    devices.setCurrentAudioDeviceType(shared, true);
+            }
+           #endif
+
+            auto* device = devices.getCurrentAudioDevice();
+            if (device == nullptr) return;
+
+            auto setup = devices.getAudioDeviceSetup();
+            int best = device->getCurrentBufferSizeSamples();
+            for (int size : device->getAvailableBufferSizes())
+                if (std::abs(size - 256) < std::abs(best - 256) && size <= device->getCurrentBufferSizeSamples())
+                    best = size;
+
+            if (best != setup.bufferSize)
+            {
+                setup.bufferSize = best;
+                devices.setAudioDeviceSetup(setup, true);
+            }
+           #else
+            juce::ignoreUnused(devices);
+           #endif
         }
 
         void shutdown() override

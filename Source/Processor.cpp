@@ -399,6 +399,17 @@ bool DebirthProcessor::isBusesLayoutSupported(const BusesLayout& layout) const
 void DebirthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
+
+    // the keyboard's messages, each with its sample, for the machine with its MIDI light lit
+    Rack::MidiIn in[512];
+    int count = 0;
+    for (const auto m : midi)
+    {
+        if (count == (int) std::size(in)) break;
+        const auto* b = m.data;
+        if (m.numBytes < 1 || b[0] >= 0xF0) continue;   // no system messages
+        in[count++] = { m.samplePosition, b[0], m.numBytes > 1 ? b[1] : (uint8_t) 0, m.numBytes > 2 ? b[2] : (uint8_t) 0 };
+    }
     midi.clear();
 
     const int n = buffer.getNumSamples();
@@ -406,7 +417,7 @@ void DebirthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
 
     if (buffer.getNumChannels() >= 2)
     {
-        rack.render(buffer.getWritePointer(0), buffer.getWritePointer(1), n);
+        rack.render(buffer.getWritePointer(0), buffer.getWritePointer(1), n, in, count);
         for (int ch = 2; ch < buffer.getNumChannels(); ++ch) buffer.clear(ch, 0, n);
         return;
     }
@@ -414,7 +425,7 @@ void DebirthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
     // one channel: render both sides, then fold them together
     if ((int) spare.size() < n) spare.resize((size_t) n);   // a host breaking its promise
     float* left = buffer.getWritePointer(0);
-    rack.render(left, spare.data(), n);
+    rack.render(left, spare.data(), n, in, count);
     for (int i = 0; i < n; ++i) left[i] = 0.5f * (left[i] + spare[(size_t) i]);
 }
 
@@ -787,6 +798,10 @@ juce::ValueTree DebirthProcessor::save() const
         if (rack.channel[m].inRack.load()) inNames.add(machineNames[m]);
     root.setProperty("machines", inNames.joinIntoString(" "), nullptr);
 
+    // the machine the keyboard plays
+    if (const int m = rack.midiMachine.load(); m >= 0 && m < Rack::channels)
+        root.setProperty("midi", machineNames[m], nullptr);
+
     for (int m = 0; m < Rack::channels; ++m)
         root.appendChild(rack.visit(m, [m] (const auto& x) { return saveWhole(machineNames[m], x); }), nullptr);
 
@@ -838,6 +853,11 @@ void DebirthProcessor::load(const juce::ValueTree& root)
     const auto inNames = juce::StringArray::fromTokens(root.getProperty("machines").toString(), false);
     for (int m = 0; m < Rack::channels; ++m)
         rack.channel[m].inRack = root.hasProperty("machines") ? inNames.contains(machineNames[m]) : Rack::copyOf(m) == 0;
+
+    // and the one the keyboard plays: none, if none was picked
+    rack.midiMachine = -1;
+    for (int m = 0; m < Rack::channels; ++m)
+        if (root.getProperty("midi").toString() == machineNames[m]) rack.midiMachine = m;
 
     // the key, as its code: "8A"; -1 for anything else
     auto keyOf = [] (const juce::String& code)
@@ -995,11 +1015,13 @@ juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 
 //============================================================================== saved, or not
 
-// the rack as saved, less where you are in it: the song's cursor, the view, the folds
+// the rack as saved, less where you are in it: the song's cursor, the view, the folds, the
+// machine the keyboard plays
 juce::String DebirthProcessor::fingerprint() const
 {
     auto t = save();
     t.removeProperty("folded", nullptr);
+    t.removeProperty("midi", nullptr);
     auto s = t.getChildWithName("Song");
     s.removeProperty("view", nullptr);
     s.removeProperty("cursor", nullptr);

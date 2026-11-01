@@ -818,6 +818,8 @@ MixerStrip::MixerStrip(debirth::Channel& c, const juce::String& n)
     };
     addAndMakeVisible(mute);
 
+    setTooltip("Click the name to play this machine from a MIDI keyboard - picked under Options, "
+               "Audio/MIDI Settings. One machine at a time; click again for none.");
     refresh();
 }
 
@@ -911,18 +913,38 @@ void MixerStrip::resized()
 void MixerStrip::tick()
 {
     meter.push(channel.peakL.exchange(0.0f), channel.peakR.exchange(0.0f));
+    if ((isMidi && isMidi(channel)) != midiLit) repaint();   // the MIDI light moved, or a rack loaded
 }
+
+std::function<bool(const debirth::Channel&)> MixerStrip::isMidi;
+std::function<void(const debirth::Channel&)> MixerStrip::pickMidi;
 
 void MixerStrip::paint(juce::Graphics& g)
 {
     drawFace(g, getLocalBounds().toFloat(), colours::mixer);
 
-    auto top = getLocalBounds().reduced(6).removeFromTop(16);
-    g.setColour(colours::mixerEdge);
+    // the name plate - green, with a light, while the keyboard plays this machine
+    auto top = plate();
+    midiLit = isMidi && isMidi(channel);
+    g.setColour(midiLit ? colours::ledGreen.darker(0.9f) : colours::mixerEdge);
     g.fillRoundedRectangle(top.toFloat(), 2.0f);
+    if (midiLit)
+    {
+        g.setColour(colours::ledGreen);
+        g.fillEllipse(top.toFloat().removeFromLeft((float) top.getHeight()).reduced(4.5f));
+    }
     g.setColour(colours::light);
     g.setFont(fonts::bold(10.0f));
     g.drawText(name, top, juce::Justification::centred);
+}
+
+void MixerStrip::mouseUp(const juce::MouseEvent& e)
+{
+    if (plate().contains(e.getPosition()) && pickMidi)
+    {
+        pickMidi(channel);
+        repaint();
+    }
 }
 
 //============================================================================== Theme

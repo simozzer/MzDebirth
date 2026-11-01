@@ -256,7 +256,7 @@ private:
 //
 // A channel of the mixer, beside the machine it carries: pan, fader and mute.
 //
-class MixerStrip final : public juce::Component
+class MixerStrip final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
     MixerStrip(debirth::Channel&, const juce::String& name);
@@ -271,13 +271,25 @@ public:
     static constexpr int compactHeight = 116;
     void setCompact(bool);
 
+    //
+    // MIDI: the name plate is lit green while the keyboard plays this channel's machine, and
+    // clicking it picks the machine - or, lit already, picks none. Set by the panel, which
+    // knows which machine a channel is.
+    //
+    static std::function<bool(const debirth::Channel&)> isMidi;
+    static std::function<void(const debirth::Channel&)> pickMidi;
+
     void paint(juce::Graphics&) override;
     void resized() override;
+    void mouseUp(const juce::MouseEvent&) override;
 
 private:
+    juce::Rectangle<int> plate() const { return getLocalBounds().reduced(6).removeFromTop(16); }
+
     debirth::Channel& channel;
     juce::String name;
     bool compact = false;
+    bool midiLit = false;
     Knob pan, delay, reverb;
     Pad dist { "DIST" }, pcf { "PCF" }, comp { "COMP" };
     juce::Slider fader;

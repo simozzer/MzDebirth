@@ -436,6 +436,16 @@ RackView::RackView(DebirthProcessor& p)
         removers[m].onPress = [this, m] { remove(m); };
         addChildComponent(removers[m]);
     }
+
+    // MIDI: a mixer strip's name plate, clicked, picks its machine for the keyboard, and is lit
+    // while it is the one - the strip knows its channel, and the channel says which machine
+    auto machineOf = [this] (const Channel& c) { return (int) (&c - processor.rack.channel); };
+    MixerStrip::isMidi = [this, machineOf] (const Channel& c) { return processor.rack.midiMachine.load() == machineOf(c); };
+    MixerStrip::pickMidi = [this, machineOf] (const Channel& c)
+    {
+        auto& midi = processor.rack.midiMachine;
+        midi = midi.load() == machineOf(c) ? -1 : machineOf(c);
+    };
 }
 
 void RemoveButton::paint(juce::Graphics& g)
@@ -707,6 +717,8 @@ void MainPanel::showMachine(int machine)
 MainPanel::~MainPanel()
 {
     processor.onCloseRequested = nullptr;
+    MixerStrip::isMidi = nullptr;
+    MixerStrip::pickMidi = nullptr;
     PatternPanel::songPlaying = nullptr;
     ControlHooks::moved = nullptr;
     ControlHooks::held = nullptr;

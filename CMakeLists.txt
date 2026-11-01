@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(MzDebirth VERSION 0.16.1 LANGUAGES C CXX)
+project(MzDebirth VERSION 0.17.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -123,7 +123,7 @@ juce_add_plugin(MzDebirth
     ICON_BIG                    "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png"
 
     IS_SYNTH                    TRUE
-    NEEDS_MIDI_INPUT            FALSE
+    NEEDS_MIDI_INPUT            TRUE    # a keyboard plays the machine with its MIDI light lit
     NEEDS_MIDI_OUTPUT           FALSE
     IS_MIDI_EFFECT              FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS TRUE
@@ -159,7 +159,8 @@ target_compile_definitions(MzDebirth PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_DISPLAY_SPLASH_SCREEN=0
-    JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1)   # App.cpp: closing asks to save
+    JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1    # App.cpp: closing asks to save
+    JUCE_ASIO=1)   # Windows: an audio interface's own driver, for a keyboard's few milliseconds (the SDK's GPLv3 terms)
 
 target_link_libraries(MzDebirth
     PRIVATE

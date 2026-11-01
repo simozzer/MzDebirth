@@ -108,6 +108,11 @@ public:
 
     int activeVoices() const { return engine != nullptr ? engine->getActiveVoices() : 0; }
 
+    // MIDI in: the pitch wheel, -8192 to 8191, and the mod wheel; an S950 has no sustain
+    void midiBend(int v)  { if (engine != nullptr) engine->pitchBend(v + 8192); }
+    void midiWheel(int v) { if (engine != nullptr) engine->modwheel(v); }
+    void midiSustain(bool) {}
+
     // a part starting on a programme of its own, by number - -1 the one picked on the panel
     void songProgram(int index);
 
