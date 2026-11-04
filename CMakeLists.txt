@@ -6,8 +6,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 #
-# JUCE, the machines' engines and the PCF live beside the repository rather than inside it:
-# each engine is compiled straight from its own repository - the synths', and MzPCF's - so a
+# JUCE, the machines' engines, the PCF and the DIST live beside the repository, not inside it:
+# each is compiled straight from its own repository - the synths', MzPCF's and MzPCD's - so a
 # fix to one reaches both its plugin and the rack. Override any of these with -D...=<path>.
 #
 set(JUCE_PATH  "${CMAKE_CURRENT_SOURCE_DIR}/../JUCE"  CACHE PATH "Where JUCE is checked out")
@@ -16,6 +16,7 @@ set(MZ303_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../Mz303" CACHE PATH "Where Mz303 is
 set(MZ808_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../Mz808" CACHE PATH "Where Mz808 is checked out")
 set(MZ909_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../Mz909" CACHE PATH "Where Mz909 is checked out")
 set(MZPCF_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../MzPCF" CACHE PATH "Where MzPCF is checked out")
+set(MZPCD_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../MzPCD" CACHE PATH "Where MzPCD is checked out")
 set(MZ7_PATH   "${CMAKE_CURRENT_SOURCE_DIR}/../Mz7"   CACHE PATH "Where Mz7 is checked out")
 set(MZ106_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../Mz106" CACHE PATH "Where Mz106 is checked out")
 
@@ -35,7 +36,7 @@ if(NOT EXISTS "${JUCE_PATH}/CMakeLists.txt")
         "or pass -DJUCE_PATH=<wherever it is>.")
 endif()
 
-foreach(machine MZ101 MZ303 MZ808 MZ909 MZ7 MZ106 MZPCF)
+foreach(machine MZ101 MZ303 MZ808 MZ909 MZ7 MZ106 MZPCF MZPCD)
     if(NOT EXISTS "${${machine}_PATH}/Source")
         message(FATAL_ERROR "No ${machine} at ${${machine}_PATH} - clone it beside this repository, "
                             "or pass -D${machine}_PATH=<wherever it is>.")
@@ -97,7 +98,8 @@ set(CORE_INCLUDES
     "${MZ950_PATH}/Plugin/Source"
     "${MZ7_PATH}/Source"
     "${MZ106_PATH}/Source"
-    "${MZPCF_PATH}/Source")
+    "${MZPCF_PATH}/Source"
+    "${MZPCD_PATH}/Source")   # PCD/RebirthDist.h: the DIST, ReBirth's own, shared with MzPCD
 
 # The sample disks that come with Mz950, for the rack to open with and the check to play.
 set(CORE_DEFINITIONS "MZ950_DISKS=\"${MZ950_PATH}/disks\"")

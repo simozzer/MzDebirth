@@ -99,7 +99,13 @@ juce::Component* EffectsBar::control(const char* id)
             const int p = juce::roundToInt(v * 100.0);
             return p == 0 ? juce::String("C") : (p < 0 ? "L" + juce::String(-p) : "R" + juce::String(p));
         });
+        else if (s == "distAmount" || s == "distShape")   // ReBirth's numbers
+                                       k->setValueText([] (double v) { return juce::String(juce::roundToInt(v * 127.0)); });
         else k->setValueText([] (double v) { return juce::String(juce::roundToInt(v * 100.0)); });
+
+        if (s == "distAmount") k->setTooltip("How hard the DIST drives, 0 to 127 as ReBirth's: it starts at 70.");
+        if (s == "distShape")  k->setTooltip("The DIST's curve, 0 to 127 as ReBirth's: 0 a hard clip, as ReBirth 1.5's, "
+                                             "and up from there ever further round its waveshaper.");
 
         if (s == "reverbDecay") k->setTooltip("How long the REVERB rings: a small room to a long hall. "
                                               "Each machine's REVERB knob sends it in.");

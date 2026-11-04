@@ -443,7 +443,7 @@ std::vector<std::string> writeGrooves(Rack& rack)
     rack.channel[Rack::M101].delay = 0.35f;
     rack.channel[Rack::M808].dist = true;
     rack.channel[Rack::M808].comp = true;
-    knob(rack.fx, "distAmount", 0.4f);
+    knob(rack.fx, "distAmount", 70.0f / 127.0f);   // ReBirth's own 70, its hard clip
 
     rack.tempo = 128.0f;
     rack.shuffle = 0.15f;

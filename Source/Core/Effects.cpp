@@ -60,45 +60,10 @@ pcf::Settings pcfSettings(const EffectSettings& s)
 
 //============================================================================== Distortion
 
-void Distortion::prepare(double rate)
-{
-    lpCoef = onePole(7000.0f, (float) rate);
-    dcCoef = 1.0f - 2.0f * pi * 5.0f / (float) rate;   // 5 Hz: low enough not to tilt a bass note's clipped top
-    lp = dcX = dcY = 0;
-}
-
-float Distortion::shaper(float u, float shape)
-{
-    // soft (tanh) into hard (a clip) over the first half of SHAPE, then hard into a fuzz
-    // that leans one way, for the even harmonics
-    const float soft = std::tanh(u);
-    const float hard = std::clamp(u, -1.0f, 1.0f);
-    if (shape <= 0.5f)
-    {
-        const float s = shape * 2.0f;
-        return soft + (hard - soft) * s;
-    }
-    const float fuzz = std::tanh(u + 0.7f * std::fabs(u)) * 0.85f;
-    const float s = (shape - 0.5f) * 2.0f;
-    return hard + (fuzz - hard) * s;
-}
-
 void Distortion::process(float* x, int n, float amount, float shape)
 {
-    const float drive = std::pow(2.0f, std::clamp(amount, 0.0f, 1.0f) * 6.0f);   // 1 to 64
-    const float makeup = 0.3f / std::max(1.0e-3f, std::fabs(shaper(0.3f * drive, shape)));
-
-    for (int i = 0; i < n; ++i)
-    {
-        const float y = shaper(x[i] * drive, shape) * makeup;
-        lp += (y - lp) * lpCoef;
-
-        // the fuzz is lopsided, so take its DC back out
-        const float out = lp - dcX + dcCoef * dcY;
-        dcX = lp;
-        dcY = out;
-        x[i] = out;
-    }
+    unit.process(x, n, (int) std::lround(std::clamp(amount, 0.0f, 1.0f) * 127.0f),
+                       (int) std::lround(std::clamp(shape, 0.0f, 1.0f) * 127.0f));
 }
 
 //============================================================================== Compressor

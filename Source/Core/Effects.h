@@ -5,6 +5,7 @@
 
 #include "Knobs.h"
 #include "PCF/Pcf.h"
+#include "PCD/RebirthDist.h"
 
 #include <cstdint>
 #include <vector>
@@ -19,8 +20,8 @@ namespace debirth
 struct EffectSettings
 {
     // DIST
-    float distAmount = 0.5f;     // 0 to 1: the drive, 0 to 36 dB
-    float distShape  = 0.25f;    // 0 to 1: soft, then hard, then a lopsided fuzz
+    float distAmount = 70.0f / 127.0f;   // 0 to 1, ReBirth's 0 to 127: the drive, 70 as ReBirth starts
+    float distShape  = 0.0f;             // 0 to 1, ReBirth's 0 to 127: 0 a hard clip, then ever further round its curve
 
     // PCF - the pattern-controlled filter
     int   pcfPattern = 0;        // 0 to 31
@@ -63,22 +64,18 @@ const std::vector<Control<EffectSettings>>& controlsFx();
 pcf::Settings pcfSettings(const EffectSettings&);
 
 //
-// DIST. Driven, shaped, and filtered a little after, as a guitar amp's speaker would, so the
-// aliasing the shaper makes does not glare. Level is made up as the drive goes up, so the
-// knob changes the colour more than the volume.
+// DIST. ReBirth's own, as OpenRB-338 decoded it, compiled from MzPCD's repository so the
+// plugin's distortion and the rack's are one: AMOUNT and SHAPE are ReBirth's 0 to 127, the
+// panel's 0 to 1 scaled to them, and SHAPE 0 is ReBirth 1.5's hard clip.
 //
 class Distortion
 {
 public:
-    void prepare(double rate);
+    void prepare(double rate) { unit.prepare(rate); }
     void process(float* x, int n, float amount, float shape);
 
 private:
-    static float shaper(float u, float shape);
-
-    float lpCoef = 0.5f, lp = 0;
-    float dcCoef = 0.9993f;
-    float dcX = 0, dcY = 0;
+    rbdist::Distortion unit;
 };
 
 //

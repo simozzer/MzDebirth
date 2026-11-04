@@ -534,6 +534,22 @@ void effects()
         check(peakOf(x) < 0.6f && peakOf(x) > 0.15f, "and keeps its level", fmt("peak %.2f from 0.30", peakOf(x)));
     }
 
+    // DIST is ReBirth's: its tables and grid as OpenRB-338's own tests have them
+    {
+        const auto& t = rbdist::Tables::get();
+        const bool grid = std::fabs(rbdist::grid(0, 127) - 0.15005) < 1e-6
+                       && std::fabs(rbdist::grid(127, 127) - 0.08002) < 1e-6
+                       && std::fabs(rbdist::grid(64, 0) - 0.1992378) < 1e-6
+                       && rbdist::grid(0, 0) == (double) 1.2f;
+        check(grid, "DIST's output gain is ReBirth's grid", fmt("%.7f %.7f %.7f", rbdist::grid(0, 127), rbdist::grid(127, 127), rbdist::grid(64, 0)));
+        bool odd = true;
+        for (int r = 0; r < 32; ++r)
+            for (int e = 1; e < 128; ++e) odd = odd && t.shaper[r][256 - e] == -t.shaper[r][e];
+        check(odd && std::signbit(t.shaper[0][128]) && t.shaper[0][128] == 0.0f && t.level[127] == 1.0f && t.level[0] == 0.0f,
+              "and its waveshaper and level curve", fmt("W[0][255] %.3f, W[31][160] %.3f, T[70] %.5f",
+                                                       t.shaper[0][255], t.shaper[31][160], t.level[70]));
+    }
+
     // PCF: shut, a 2 kHz tone is gone; the envelope full open, it comes through
     {
         EffectSettings s;

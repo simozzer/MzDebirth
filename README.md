@@ -406,7 +406,9 @@ without picking a pattern.
 
 ReBirth's four units, and a reverb, along under the transport:
 
-- **DIST** - drive, and a shape from soft, to hard, to a lopsided fuzz.
+- **DIST** - ReBirth's own distortion, as [OpenRB-338](https://github.com/pingw33n/openrb-338) decoded
+  it: AMOUNT and SHAPE, 0 to 127 as ReBirth's. SHAPE 0 is ReBirth 1.5's hard clip; up from there
+  it goes ever further round ReBirth's waveshaper. The same as MzPCD's, compiled from its repository.
 - **PCF** - a filter played by one of 32 step patterns: struck on every sixteenth at that
   step's level, closing again by DEC; low-pass or band-pass. The same as the
   [MzPCF](https://github.com/simozzer/MzPCF) plugin, to use on any track in a DAW.
@@ -428,7 +430,7 @@ with the highest point held for a second.
 The factory rack is mixed to be heard at the level of a record. An 808 kick starts with one
 big half-cycle, with its body - the weight you hear - some 20 dB under it, so left alone it
 holds the whole mix down and the kick sounds thin. So the Mz808 goes through the **DIST**,
-soft, as well as the **COMP**: that shaves the spike and adds the harmonics that let a kick
+at ReBirth's own 70, as well as the **COMP**: that shaves the spike and adds the harmonics that let a kick
 through small speakers, and the faders and MASTER come up into **LIMIT**. If your own rack
 sounds weak in the low end, try the same on its kick.
 
@@ -563,7 +565,10 @@ cmake.
 
 Created by Simon Moscrop.
 
-Free software under the GNU AGPL v3, as the synths it plays; see LICENSE.
+Free software under the GNU AGPL v3, as the synths it plays; see LICENSE. The DIST, compiled
+from MzPCD's `Source/PCD/RebirthDist.h`, is a port of OpenRB-338's distortion, copyright (C)
+2026 the OpenRB-338 authors, under the GNU GPL v3, which section 13 of each licence lets it be
+combined with.
 
 ReBirth and RB-338 are Propellerhead's; TB-303, SH-101, TR-808 and TR-909 are Roland's; S900
 and S950 are Akai's; Cubase is Steinberg's; Ableton Live is Ableton's; Mixed In Key is Mixed
